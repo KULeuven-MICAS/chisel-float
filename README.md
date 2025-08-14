@@ -19,11 +19,14 @@ Floating point units (add, mul, FMA) for transprecision computing in arbitrary F
   - FpAddFp — floating‑point addition
   - FpMulFp — floating‑point multiplication
   - FpFmaFp — fused multiply‑add
-    - Currently implemented as Mul + Add composition; fused (accuracy-preserving) implementation is under way.
   - All are implemented in a purely combinatorial way
 - Mixed precision
   - Independent type selection per input/output
-  - Tested so far: FP16, BF16, FP32; but any FP format should work
+  - Supported sofar: FP8, FP16, BF16, FP32
+  - To add new (arbitrary FP type):
+    1. Create object that inherits from `FpType`
+    2. Add type to `fp_format_e` and `fp_encoding_t` in `src/main/resources/common_block/fpnew_pkg_snax.sv`
+    3. Add tests cases (and pray they work)
 - Testing
   - Randomized tests
   - Mixed‑precision coverage
@@ -32,7 +35,7 @@ Floating point units (add, mul, FMA) for transprecision computing in arbitrary F
 ## Repository layout
 
 - `src/main/scala/fp_unit/` — Chisel wrappers and type definitions
-- `src/test/scala/fp_unit/` — test suites and reference utilities
+- `src/test/scala/fp_unit/` — Test suites and reference utilities
 - `src/main/resources/` — Verilog source code
 
 

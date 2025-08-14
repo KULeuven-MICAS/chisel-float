@@ -8,6 +8,7 @@
 package fp_unit
 
 import chisel3._
+
 import chiseltest._
 import chiseltest.simulator.VerilatorBackendAnnotation
 import org.scalatest.flatspec.AnyFlatSpec

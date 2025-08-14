@@ -7,6 +7,7 @@
 package fp_unit
 
 import scala.Float
+
 import chisel3._
 
 trait FpUtils {
