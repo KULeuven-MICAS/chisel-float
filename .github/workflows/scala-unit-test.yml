@@ -3,7 +3,7 @@
 name: Run Scala Unit Test
 on:
   push:
-    branches: ["main", "dev"]
+    branches: ["main"]
   pull_request:
 
 jobs:
