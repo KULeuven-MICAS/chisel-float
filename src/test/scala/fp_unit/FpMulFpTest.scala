@@ -98,6 +98,22 @@ class FpMulFpTest extends AnyFlatSpec with Matchers with ChiselScalatestTester w
       .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
   }
 
+  it should "perform FP8 x FP8 = FP16 correctly" in {
+    test(new FpMulFp(typeA = FP8, typeB = FP8, typeC = FP16))
+      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
+  }
+
+  it should "perform FP8 x FP32 = FP16 correctly" in {
+    test(new FpMulFp(typeA = FP8, typeB = FP32, typeC = FP16))
+      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
+  }
+
+  it should "perform FP16 x FP8 = FP32 correctly" in {
+    test(new FpMulFp(typeA = FP16, typeB = FP8, typeC = FP32))
+      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
+  }
+
+  // Special cases
   it should "handle special cases (NaN, Infinity, Underflow) for FP16 x FP32 -> FP16" in {
     test(new FpMulFp(typeA = FP16, typeB = FP32, typeC = FP16))
       .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testSpecialCases(dut) }

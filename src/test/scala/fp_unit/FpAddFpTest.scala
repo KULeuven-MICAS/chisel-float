@@ -125,6 +125,7 @@ class FpAddFpTest extends AnyFlatSpec with Matchers with ChiselScalatestTester w
     ).withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => test_all_fp_add_fp(dut) }
   }
 
+// Special cases
   it should "handle special cases in FP16 + FP32 -> FP16" in {
     test(
       new FpAddFp(typeA = FP16, typeB = FP32, typeC = FP16)

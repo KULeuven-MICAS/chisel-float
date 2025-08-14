@@ -32,7 +32,7 @@ class FpMulFpBlackBox(topmodule: String, typeA: FpType, typeB: FpType, typeC: Fp
   addResource("common_block/fpnew_classifier.sv")
   addResource("common_block/fpnew_rounding.sv")
   addResource("common_block/lzc.sv")
-  addResource("src_fp_mul/fp_mul.sv")
+  addResource("fp_mul.sv")
 
 }
 

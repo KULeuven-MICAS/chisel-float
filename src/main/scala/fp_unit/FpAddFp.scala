@@ -32,7 +32,7 @@ class FpAddFpBlackBox(modulename: String, typeA: FpType, typeB: FpType, typeC: F
   addResource("common_block/fpnew_classifier.sv")
   addResource("common_block/fpnew_rounding.sv")
   addResource("common_block/lzc.sv")
-  addResource("src_fp_add/fp_add.sv")
+  addResource("fp_add.sv")
 
 }
 
@@ -47,8 +47,7 @@ class FpAddFp(val typeA: FpType, val typeB: FpType, val typeC: FpType, modulenam
     val out  = Output(UInt(typeC.W))
   })
 
-  override def desiredName: String = modulename
-  val sv_module = Module(new FpAddFpBlackBox("fp_add", typeA, typeB, typeC))
+  val sv_module = Module(new FpAddFpBlackBox(modulename, typeA, typeB, typeC))
 
   io.out                   := sv_module.io.result_o
   sv_module.io.operand_a_i := io.in_a
