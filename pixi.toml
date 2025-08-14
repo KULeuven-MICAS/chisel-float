@@ -1,0 +1,18 @@
+# Copyright 2025 KU Leuven.
+# Licensed under the Apache License, Version 2.0, see LICENSE for details.
+# SPDX-License-Identifier: Apache-2.0
+
+[project]
+authors = ["Robin Geens <robin.geens@kuleuven.be>"]
+channels = ["conda-forge","kuleuven-micas"]
+name = "chisel-float"
+platforms = ["linux-64"]
+version = "0.2.8"
+
+[tasks]
+
+[dependencies]
+verilator = ">=5.30,<6"
+sbt = ">=1.10.2,<2"
+# [activation.env]
+# VLT_ROOT = "${CONDA_PREFIX}/share/verilator"
