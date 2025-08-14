@@ -7,6 +7,7 @@
 package fp_unit
 
 import scala.Float
+
 import chisel3._
 
 trait FpUtils {
@@ -213,20 +214,6 @@ trait FpUtils {
   /** Multiplies two floating point numbers in a given format by introducing the hardware limitations of this format */
   def fpOperationHardware(a: Float, typeA: FpType, op: Float => Float) = op(quantize(typeA, a))
 
-  /** Returns true iff the hardware result a (as UInt) correctly represents the float. The software reference uses RNE
-    * (Round to Nearest, ties to Even).
-    *
-    * -0 and +0 are also accepted as equal.
-    */
-  def fpEqualsHardware(expected: Float, from_hw: UInt, typeB: FpType) = {
-    val expected_bigint = floatToUInt(typeB, expected)
-    val from_hw_bigint  = from_hw.litValue
-    val eqZero          = expected_bigint == 0          && isZero(from_hw_bigint, typeB)
-    val eqNaN           = isNaN(expected_bigint, typeB) && isNaN(from_hw_bigint, typeB)
-
-    from_hw_bigint == expected_bigint || eqZero || eqNaN
-  }
-
   def isNaN(bits: BigInt, fpType: FpType): Boolean = {
     val expMask = ((BigInt(1) << fpType.expWidth) - 1) << fpType.sigWidth
     val exp     = (bits & expMask) >> fpType.sigWidth
@@ -236,14 +223,27 @@ trait FpUtils {
 
   def isZero(bits: BigInt, fpType: FpType): Boolean = bits == BigInt(1) << fpType.width - 1
 
+  /** Returns true iff the hardware result a (as UInt) correctly represents the float. The result is allowed to differ
+    * in `lsbTolerance` LSB bits, as a result from rounding errors propagated through operations.
+    *
+    * The software reference uses RNE (Round to Nearest, ties to Even). -0 and +0 are also accepted as equal.
+    */
+  def fpEqualsHardware(expected: Float, from_hw: UInt, typeB: FpType, lsbTolerance: Int = 0) = {
+    val expected_bigint = floatToUInt(typeB, expected)
+    val from_hw_bigint  = from_hw.litValue
+    val eqZero          = expected_bigint == 0          && isZero(from_hw_bigint, typeB)
+    val eqNaN           = isNaN(expected_bigint, typeB) && isNaN(from_hw_bigint, typeB)
+    (from_hw_bigint - expected_bigint).abs <= ((BigInt(1) << lsbTolerance) - 1) || eqZero || eqNaN
+  }
+
   /** Define operator symbol for mulFpHardware. Signature:  ((Float, FpType), (Float, FpType)) => Float */
   implicit class FpHardwareOps(a: (Float, FpType)) {
     def *(b: (Float, FpType)): Float = fpOperationHardware(a._1, b._1, a._2, b._2, _ * _)
     def +(b: (Float, FpType)): Float = fpOperationHardware(a._1, b._1, a._2, b._2, _ + _)
 
     /** Not to be confused with the Chisel3 === operator */
-    def ===(b: UInt): Boolean = fpEqualsHardware(a._1, b, a._2)
-
+    def ===(b: UInt): Boolean = fpEqualsHardware(a._1, b, a._2, lsbTolerance = 0)
+    def =~=(b: UInt): Boolean = fpEqualsHardware(a._1, b, a._2, lsbTolerance = 1)
   }
 
   def uintToStr(bits: BigInt, fpType: FpType): String =

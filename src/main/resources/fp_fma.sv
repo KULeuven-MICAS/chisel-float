@@ -8,7 +8,7 @@
 // Changes: allow for different a, b, c, and out data types.
 
 
-module fpnew_fma #(
+module fp_fma #(
     parameter fpnew_pkg_snax::fp_format_e FpFormat_a = fpnew_pkg_snax::fp_format_e'(2),
     parameter fpnew_pkg_snax::fp_format_e FpFormat_b = fpnew_pkg_snax::fp_format_e'(2),
     // Operand c and output
@@ -17,11 +17,11 @@ module fpnew_fma #(
     // don't change
     parameter int unsigned WIDTH_A = fpnew_pkg_snax::fp_width(FpFormat_a),
     parameter int unsigned WIDTH_B = fpnew_pkg_snax::fp_width(FpFormat_b),
-    parameter int unsigned WIDTH_C = fpnew_pkg_snax::fp_width(FpFormat_c),
+    parameter int unsigned WIDTH_C = fpnew_pkg_snax::fp_width(FpFormat_c)
 ) (
     input  logic [WIDTH_A-1:0] operand_a_i,
     input  logic [WIDTH_B-1:0] operand_b_i,
-    input  logic [WIDTH_C-1:0] operands_c_i,
+    input  logic [WIDTH_C-1:0] operand_c_i,
     output logic [WIDTH_C-1:0] result_o
 );
 
@@ -46,11 +46,14 @@ module fpnew_fma #(
   localparam int unsigned PRECISION_BITS_B = MAN_BITS_B + 1;
   localparam int unsigned PRECISION_BITS_C = MAN_BITS_C + 1;
 
-  localparam int unsigned MUL_WIDTH = PRECISION_BITS_A + PRECISION_BITS_B;
-  localparam int unsigned LOWER_SUM_WIDTH = MUL_WIDTH + 3;  // TODO +3? 
+  localparam int unsigned MUL_WIDTH = fpnew_pkg_snax::maximum(PRECISION_BITS_A + PRECISION_BITS_B, PRECISION_BITS_C);
+  localparam int unsigned PRODUCT_SHIFT = MUL_WIDTH - (PRECISION_BITS_A + PRECISION_BITS_B);
+  localparam int unsigned LOWER_SUM_WIDTH = MUL_WIDTH + 3;
   localparam int unsigned LZC_RESULT_WIDTH = $clog2(LOWER_SUM_WIDTH);
 
-  localparam int unsigned EXP_WIDTH = unsigned'(fpnew_pkg_snax::maximum(      EXP_BITS_C + 2, LZC_RESULT_WIDTH  ));
+  localparam int unsigned EXP_WIDTH = unsigned'(fpnew_pkg_snax::maximum(
+      fpnew_pkg_snax::maximum(EXP_BITS_C, fpnew_pkg_snax::maximum(EXP_BITS_A, EXP_BITS_B)) + 2, LZC_RESULT_WIDTH
+  ));
   localparam int unsigned INTERMEDIATE_WIDTH = LOWER_SUM_WIDTH + PRECISION_BITS_C;
   localparam int unsigned SHIFT_AMOUNT_WIDTH = $clog2(INTERMEDIATE_WIDTH + 2);
 
@@ -100,7 +103,7 @@ module fpnew_fma #(
       .FpFormat   (FpFormat_c),
       .NumOperands(1)
   ) i_class_inputs_c (
-      .operands_i(operands_c_i),
+      .operands_i(operand_c_i),
       .is_boxed_i(1'b1),
       .info_o    (info_q[2])
   );
@@ -112,7 +115,7 @@ module fpnew_fma #(
 
   assign operand_a = operand_a_i;
   assign operand_b = operand_b_i;
-  assign operand_c = operands_c_i;
+  assign operand_c = operand_c_i;
   assign info_a = info_q[0];
   assign info_b = info_q[1];
   assign info_c = info_q[2];
@@ -143,11 +146,7 @@ module fpnew_fma #(
 
   always_comb begin : special_cases
     // Default assignments
-    special_result = '{
-        sign: 1'b0,
-        exponent: '1,
-        mantissa: 2 ** (MAN_BITS_C - 1)
-    };  // canonical qNaN
+    special_result = '{sign: 1'b0, exponent: '1, mantissa: 2 ** (MAN_BITS_C - 1)};  // canonical qNaN
     result_is_special = 1'b0;
 
     if ((info_a.is_inf && info_b.is_zero) || (info_a.is_zero && info_b.is_inf)) begin
@@ -177,16 +176,15 @@ module fpnew_fma #(
   logic signed [EXP_BITS_A:0] exponent_a;
   logic signed [EXP_BITS_B:0] exponent_b;
   logic signed [EXP_BITS_C:0] exponent_c;
-  logic signed [EXP_BITS_C:0] exponent_addend, exponent_product, exponent_difference;
-  logic signed [EXP_BITS_C:0] tentative_exponent;
+
+  logic signed [EXP_WIDTH-1:0] exponent_addend, exponent_product, exponent_difference;
+  logic signed [EXP_WIDTH-1:0] tentative_exponent;
 
   assign exponent_a = signed'({1'b0, operand_a.exponent});
   assign exponent_b = signed'({1'b0, operand_b.exponent});
   assign exponent_c = signed'({1'b0, operand_c.exponent});
 
-  assign exponent_addend = signed'(exponent_c + $signed(
-          {1'b0, ~info_c.is_normal}
-      ));  // 0 as subnorm
+  assign exponent_addend = signed'(exponent_c + $signed({1'b0, ~info_c.is_normal}));  // 0 as subnorm
   assign exponent_product = (info_a.is_zero || info_b.is_zero)
                                 ? 2 - signed'(BIAS_A) - signed'(BIAS_B) + signed'(BIAS_C)
                                 : signed'(exponent_a + info_a.is_subnormal
@@ -198,11 +196,16 @@ module fpnew_fma #(
   logic [SHIFT_AMOUNT_WIDTH-1:0] addend_shamt;
 
   always_comb begin : addend_shift_amount
-    if (exponent_difference <= signed'(-PRECISION_BITS_A - PRECISION_BITS_B - 1))
-      addend_shamt = PRECISION_BITS_A + PRECISION_BITS_B + PRECISION_BITS_C + 4;
+    // Product-anchored case, saturated shift (addend is only in the sticky bit)
+    if (exponent_difference <= signed'(-MUL_WIDTH - 1))  // 
+      addend_shamt = INTERMEDIATE_WIDTH + 1;
+    // Addend and product will have mutual bits to add
     else if (exponent_difference <= signed'(PRECISION_BITS_C + 2))
       addend_shamt = unsigned'(signed'(PRECISION_BITS_C) + 3 - exponent_difference);
-    else addend_shamt = 0;
+    // Addend-anchored case, saturated shift (product is only in the sticky bit)
+    else begin  //
+      addend_shamt = 0;
+    end
   end
 
   // ------------------
@@ -225,7 +228,7 @@ module fpnew_fma #(
   // Product is placed into a 3p+4 bit wide vector, padded with 2 bits for round and sticky:
   // | 000...000 | product | RS |
   //  <-  p+2  -> <-  2p -> < 2>
-  assign product_shifted = product << 2;
+  assign product_shifted = product << PRODUCT_SHIFT + 2;
 
   // -----------------
   // Addend data path
@@ -236,8 +239,7 @@ module fpnew_fma #(
   logic [INTERMEDIATE_WIDTH:0] addend_shifted;
   logic                        inject_carry_in;
 
-  assign {addend_after_shift, addend_sticky_bits} = (mantissa_c<<(INTERMEDIATE_WIDTH+1)) >> addend_shamt;
-
+  assign {addend_after_shift, addend_sticky_bits} = (mantissa_c << (INTERMEDIATE_WIDTH + 1)) >> addend_shamt;
   assign sticky_before_add = (|addend_sticky_bits);
 
   // In case of a subtraction, the addend is inverted
@@ -260,6 +262,7 @@ module fpnew_fma #(
   assign sum = (effective_subtraction && ~sum_carry) ? -sum_raw : sum_raw;
 
   // In case of a mispredicted subtraction result, do a sign flip
+  // TODO this is different from reference
   assign final_sign = (effective_subtraction && (sum_carry == tentative_sign))
                         ? 1'b1
                         : (effective_subtraction ? 1'b0 : tentative_sign);
@@ -281,6 +284,7 @@ module fpnew_fma #(
   logic        [   LOWER_SUM_WIDTH-1:0] sum_sticky_bits;
   logic                                 sticky_after_norm;
 
+  // TODO EXP_WIDTH_C? 
   logic signed [         EXP_WIDTH-1:0] final_exponent;
 
   assign sum_lower = sum[LOWER_SUM_WIDTH-1:0];
@@ -360,8 +364,8 @@ module fpnew_fma #(
   assign uf_before_round = final_exponent == 0;
 
   assign pre_round_sign = final_sign;
-  assign pre_round_exponent = (of_before_round) ? 2**EXP_BITS_C-2 : unsigned'(final_exponent[EXP_BITS_C-1:0]);
-  assign pre_round_mantissa = (of_before_round) ? '1 : final_mantissa[MAN_BITS_C:1]; // bit 0 is R bit
+  assign pre_round_exponent = (of_before_round) ? 2 ** EXP_BITS_C - 2 : unsigned'(final_exponent[EXP_BITS_C-1:0]);
+  assign pre_round_mantissa = (of_before_round) ? '1 : final_mantissa[MAN_BITS_C:1];  // bit 0 is R bit
   assign pre_round_abs = {pre_round_exponent, pre_round_mantissa};
 
   assign round_sticky_bits = (of_before_round) ? 2'b11 : {final_mantissa[0], sticky_after_norm};
