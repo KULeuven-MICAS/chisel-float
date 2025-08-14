@@ -1,0 +1,17 @@
+
+# Run Scala Unit Test
+name: Run Scala Unit Test
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  run:
+    name: Build and Test
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v2
+      - name: Run the unit tests
+        run: |
+          sbt test

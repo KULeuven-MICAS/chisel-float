@@ -213,43 +213,6 @@ trait FpUtils {
   /** Multiplies two floating point numbers in a given format by introducing the hardware limitations of this format */
   def fpOperationHardware(a: Float, typeA: FpType, op: Float => Float) = op(quantize(typeA, a))
 
-  /** Computes the exponential function using the Schraudolph method.
-    *
-    * This function should have the exact same functionality as the corresponding CUDA kernel.
-    *
-    * @param fmaIsAccurate
-    *   If true, `scale` is computed as a single FMA operation, without recasting the intermediate result (from mul to
-    *   add) to FPTYPE. On GPU, this is true.
-    */
-  def fastExp(x: Float, fpType: FpType = FP16, fmaIsAccurate: Boolean = true): Float = {
-    require(x <= 11.0f, "fastExp only supports inputs <= 11.0f")
-    require(fpType == FP16, "FastExp only supports FP16")
-
-    val INV_LN2     = 1.4427f // Hardwired value
-    val TUNING_BIAS = 0f
-
-    val fpExpBias = expBias(fpType.expWidth)
-    val scaleBias = quantize(fpType, fpExpBias - TUNING_BIAS) // Hardwired value
-
-    val scaleMul = (INV_LN2, fpType) * (x, fpType)
-    val addInput = if (fmaIsAccurate) scaleMul else quantize(fpType, scaleMul)
-    val scale    = quantize(fpType, addInput + scaleBias)
-
-    // Set subnormal values are clipped to zero
-    if (scale < 0) return 0f
-
-    val scaleBits     = floatToUInt(fpType, scale)
-    val scaleExp      = (scaleBits >> fpType.sigWidth) & ((1 << fpType.expWidth) - 1)
-    val scaleFrac     = scaleBits & ((1 << fpType.sigWidth) - 1)
-    val scaleMantissa = 1 << fpType.sigWidth | scaleFrac
-
-    val shift           = scaleExp.toInt - fpExpBias
-    val mantissaShifted =
-      if (shift < 0) (scaleMantissa >> -shift) else (scaleMantissa << shift)
-
-    uintToFloat(fpType, mantissaShifted)
-  }
-
   /** Returns true iff the hardware result a (as UInt) correctly represents the float. The software reference uses RNE
     * (Round to Nearest, ties to Even).
     *
@@ -262,20 +225,6 @@ trait FpUtils {
     val eqNaN           = isNaN(expected_bigint, typeB) && isNaN(from_hw_bigint, typeB)
 
     from_hw_bigint == expected_bigint || eqZero || eqNaN
-  }
-
-  /** Returns true iff the hardware result a (as UInt) correctly represents the float. The result is allowed to differ
-    * in `lsbTolerance` LSB bits, as a result from rounding errors propagated through operations.
-    *
-    * TODO remove. There should be no more rounding errors compared to hardware...
-    */
-  def fpAlmostEqualsHardware(expected: Float, from_hw: UInt, typeB: FpType) = {
-    val lsbTolerance    = 4
-    val expected_bigint = floatToUInt(typeB, expected)
-    val from_hw_bigint  = from_hw.litValue
-    val eqZero          = expected_bigint == 0          && isZero(from_hw_bigint, typeB)
-    val eqNaN           = isNaN(expected_bigint, typeB) && isNaN(from_hw_bigint, typeB)
-    (from_hw_bigint - expected_bigint).abs <= ((BigInt(1) << lsbTolerance) - 1) || eqZero || eqNaN
   }
 
   def isNaN(bits: BigInt, fpType: FpType): Boolean = {
