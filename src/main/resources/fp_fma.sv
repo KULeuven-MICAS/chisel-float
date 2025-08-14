@@ -46,7 +46,8 @@ module fp_fma #(
   localparam int unsigned PRECISION_BITS_B = MAN_BITS_B + 1;
   localparam int unsigned PRECISION_BITS_C = MAN_BITS_C + 1;
 
-  localparam int unsigned MUL_WIDTH = PRECISION_BITS_A + PRECISION_BITS_B;
+  localparam int unsigned MUL_WIDTH = fpnew_pkg_snax::maximum(PRECISION_BITS_A + PRECISION_BITS_B, PRECISION_BITS_C);
+  localparam int unsigned PRODUCT_SHIFT = MUL_WIDTH - (PRECISION_BITS_A + PRECISION_BITS_B);
   localparam int unsigned LOWER_SUM_WIDTH = MUL_WIDTH + 3;
   localparam int unsigned LZC_RESULT_WIDTH = $clog2(LOWER_SUM_WIDTH);
 
@@ -195,10 +196,13 @@ module fp_fma #(
   logic [SHIFT_AMOUNT_WIDTH-1:0] addend_shamt;
 
   always_comb begin : addend_shift_amount
-    if (exponent_difference <= signed'(-MUL_WIDTH - 1))  //
+    // Product-anchored case, saturated shift (addend is only in the sticky bit)
+    if (exponent_difference <= signed'(-MUL_WIDTH - 1))  // 
       addend_shamt = INTERMEDIATE_WIDTH + 1;
+    // Addend and product will have mutual bits to add
     else if (exponent_difference <= signed'(PRECISION_BITS_C + 2))
       addend_shamt = unsigned'(signed'(PRECISION_BITS_C) + 3 - exponent_difference);
+    // Addend-anchored case, saturated shift (product is only in the sticky bit)
     else begin  //
       addend_shamt = 0;
     end
@@ -207,7 +211,6 @@ module fp_fma #(
   // ------------------
   // Product data path
   // ------------------
-  localparam int unsigned PRODUCT_SHIFT = fpnew_pkg_snax::maximum(0, MAN_BITS_C - MUL_WIDTH);
   logic [PRECISION_BITS_A-1:0] mantissa_a;
   logic [PRECISION_BITS_B-1:0] mantissa_b;
   logic [PRECISION_BITS_C-1:0] mantissa_c;

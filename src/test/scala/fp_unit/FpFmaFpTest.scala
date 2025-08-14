@@ -110,12 +110,12 @@ class FpFmaFpTest extends AnyFlatSpec with Matchers with ChiselScalatestTester w
     specialCases.zipWithIndex.foreach { case ((a, b, c), index) => testSingle(dut, index + 1, a, b, c) }
   }
 
-  // it should "debug" in {
-  //   test(new FpFmaFp(typeA = FP32, typeB = FP32, typeC = FP32))
-  //     .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut =>
-  //       testSingle(dut, 1, 123.245f, 0.1234f, 0.0f)
-  //     }
-  // }
+  it should "debug" in {
+    test(new FpFmaFp(typeA = FP8, typeB = FP8, typeC = FP32))
+      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut =>
+        testSingle(dut, 0, 0.5f, 0.75f, 0.75f)
+      }
+  }
 
   it should "perform FP32 x FP32 + FP32 FMA correctly" in {
     test(new FpFmaFp(typeA = FP32, typeB = FP32, typeC = FP32))
