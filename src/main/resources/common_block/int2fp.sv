@@ -31,18 +31,22 @@ module intN_to_fp16 #(
     end
   end
 
-  lzc_snax #(
-      .WIDTH(INT_WIDTH),
-      .MODE (1)           // MODE = 1 counts leading zeroes
-  ) i_lzc (
-      .in_i   (abs_val),
-      .cnt_o  (leading_zero_count),
-      .empty_o()
-  );
+  if (INT_WIDTH > 1) begin
+    lzc_snax #(
+        .WIDTH(INT_WIDTH),
+        .MODE (1)           // MODE = 1 counts leading zeroes
+    ) i_lzc (
+        .in_i   (abs_val),
+        .cnt_o  (leading_zero_count),
+        .empty_o()
+    );
+  end else begin
+    assign leading_zero_count = 0;
+  end
+
 
 
   always_comb begin
-
     // Special case: INT_WIDTH = 1
     if (INT_WIDTH == 1) begin
       // input: 1 => +1 → fp16 of +1.0 (0 01111 0000000000)
@@ -53,7 +57,7 @@ module intN_to_fp16 #(
       // General case: signed int to fp16
       // If input is zero
       if (abs_val == 0) begin
-        exponent = 5'd0;  // Zero exponent
+        exponent = 5'd0;
         mantissa = 10'd0;
       end else begin
         // Exponent: bias + shift to align leading 1
