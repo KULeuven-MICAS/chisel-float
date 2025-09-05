@@ -97,4 +97,10 @@ class FpMulIntTest extends AnyFlatSpec with Matchers with ChiselScalatestTester 
       testSpecialCases(dut)
     }
   }
+
+  it should "perform FP16 x Int2 -> FP16 multiply correctly" in {
+    test(new FpMulInt(FP16, Int2, FP16)).withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut =>
+      testAll(dut)
+    }
+  }
 }

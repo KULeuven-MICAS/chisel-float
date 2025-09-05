@@ -8,6 +8,7 @@ package fp_unit
 
 import chisel3._
 import chisel3.util._
+import chisel3.experimental.RawParam
 
 /** @param typeA
   *   Must be FP16
@@ -17,10 +18,15 @@ import chisel3.util._
   *   Must be FP32
   */
 class FpMulIntBlackBox(topmodule: String, typeA: FpType = FP16, typeB: IntType, typeC: FpType = FP32)
-    extends BlackBox(Map("WIDTH_B" -> typeB.width))
+    extends BlackBox(
+      Map(
+        "WIDTH_B"      -> typeB.width,
+        "FpFormat_out" -> RawParam(typeC.fpnewFormatEnum)
+      )
+    )
     with HasBlackBoxResource {
 
-  require(typeA == FP16 && typeC == FP32, "FpMulInt only supports FP16*Int->FP32")
+  require(typeA == FP16, "FpMulInt only supports FP16 as FP input type")
 
   val io = IO(new Bundle {
     val operand_a_i = Input(UInt(typeA.width.W))
@@ -34,6 +40,7 @@ class FpMulIntBlackBox(topmodule: String, typeA: FpType = FP16, typeB: IntType, 
   addResource("common_block/fpnew_rounding.sv")
   addResource("common_block/lzc.sv")
   addResource("common_block/int2fp.sv")
+  addResource("fp_mul.sv")
   addResource("fp_mul_int.sv")
 }
 
