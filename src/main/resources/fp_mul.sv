@@ -234,8 +234,10 @@ module fp_mul #(
     // If src is wider than dst: save LSBs in sticky bits
     if (STICKY_BIT_WIDTH > 0) {final_mantissa, sum_sticky_bits} = product_shifted;
     // If src is narrower than dst: append 0 at LSBs
-    else
+    else begin
       final_mantissa = {product_shifted, {(PADDING_WIDTH) {1'b0}}};
+      sum_sticky_bits = 1'b0;
+    end
 
     final_exponent = normalized_exponent;
   end

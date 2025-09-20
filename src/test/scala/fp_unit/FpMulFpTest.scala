@@ -99,6 +99,11 @@ class FpMulFpTest extends AnyFlatSpec with Matchers with ChiselScalatestTester w
       .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
   }
 
+  it should "perform FP8 x FP8 = FP32 correctly" in {
+    test(new FpMulFp(typeA = FP8, typeB = FP8, typeC = FP32))
+      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
+  }
+
   it should "perform FP8 x FP8 = FP16 correctly" in {
     test(new FpMulFp(typeA = FP8, typeB = FP8, typeC = FP16))
       .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
