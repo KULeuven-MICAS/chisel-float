@@ -4,7 +4,7 @@
 
 // Author: Stefan Mach <smach@iis.ee.ethz.ch>
 
-module fpnew_classifier #(
+module fpnew_classifier_snax #(
     parameter fpnew_pkg_snax::fp_format_e FpFormat    = fpnew_pkg_snax::fp_format_e'(0),
     parameter int unsigned                NumOperands = 1,
     // Do not change

@@ -84,7 +84,7 @@ module fp_add #(
 
 
   // Classify input
-  fpnew_classifier #(
+  fpnew_classifier_snax #(
       .FpFormat   (FpFormat_a),
       .NumOperands(1)
   ) i_class_inputs_a (
@@ -93,7 +93,7 @@ module fp_add #(
       .info_o    (info_q[0])
   );
 
-  fpnew_classifier #(
+  fpnew_classifier_snax #(
       .FpFormat   (FpFormat_b),
       .NumOperands(1)
   ) i_class_inputs_b (
@@ -320,9 +320,9 @@ module fp_add #(
   assign round_sticky_bits = (of_before_round) ? 2'b11 : {final_mantissa[0], sticky_after_norm};
 
   // Perform the rounding
-  fpnew_rounding #(
+  fpnew_rounding_snax #(
       .AbsWidth(EXP_BITS_C + MAN_BITS_C)
-  ) u_fpnew_rounding (
+  ) u_fpnew_rounding_snax (
       .abs_value_i(pre_round_abs),
       .sign_i(pre_round_sign),
       .round_sticky_bits_i(round_sticky_bits),
