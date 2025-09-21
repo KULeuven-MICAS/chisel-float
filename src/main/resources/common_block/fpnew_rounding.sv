@@ -4,7 +4,7 @@
 
 // Author: Stefan Mach <smach@iis.ee.ethz.ch>
 
-module fpnew_rounding #(
+module fpnew_rounding_snax #(
     parameter int unsigned AbsWidth = 2  // Width of the abolute value, without sign bit
 ) (
     // Input value
