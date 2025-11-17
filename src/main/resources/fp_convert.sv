@@ -4,23 +4,19 @@
 // Author: Stefan Mach <smach@iis.ee.ethz.ch>
 
 // Copyright 2025 KU Leuven
-// Modified by: Man Shi <man.shi@kuleuven.be>
-//              Robin Geens <robin.geens@kuleuven.be>
-// Changes: allow for different a, b, and out data types; remove adder.
+// Modified by: Robin Geens <robin.geens@kuleuven.be>
 
-module fp_mul #(
-    parameter fpnew_pkg_snax::fp_format_e FpFormat_a   = fpnew_pkg_snax::fp_format_e'(2),  //FP16 
-    parameter fpnew_pkg_snax::fp_format_e FpFormat_b   = fpnew_pkg_snax::fp_format_e'(2),  //FP16 
+// For now, this is implemented as a multiplication with constant 1 (exp=BIAS_IN, mantissa=1).
+module fp_convert #(
+    parameter fpnew_pkg_snax::fp_format_e FpFormat_in  = fpnew_pkg_snax::fp_format_e'(2),  //FP16 
     parameter fpnew_pkg_snax::fp_format_e FpFormat_out = fpnew_pkg_snax::fp_format_e'(0),  //FP32
 
     // Do not change
-    parameter int unsigned WIDTH_a   = fpnew_pkg_snax::fp_width(FpFormat_a),
-    parameter int unsigned WIDTH_b   = fpnew_pkg_snax::fp_width(FpFormat_b),
+    parameter int unsigned WIDTH_in  = fpnew_pkg_snax::fp_width(FpFormat_in),
     parameter int unsigned WIDTH_out = fpnew_pkg_snax::fp_width(FpFormat_out)
 ) (
     // Input signals
-    input  logic [  WIDTH_a-1:0] operand_a_i,  // 3 operands
-    input  logic [  WIDTH_b-1:0] operand_b_i,  // 3 operands
+    input  logic [ WIDTH_in-1:0] operand_a_i,
     // Output signals
     output logic [WIDTH_out-1:0] result_o
 
@@ -30,23 +26,19 @@ module fp_mul #(
   // Constants
   // ----------
   // for operand A
-  localparam int unsigned EXP_BITS_A = fpnew_pkg_snax::exp_bits(FpFormat_a);
-  localparam int unsigned MAN_BITS_A = fpnew_pkg_snax::man_bits(FpFormat_a);
-  localparam int unsigned BIAS_A = fpnew_pkg_snax::bias(FpFormat_a);
-  // for operand B
-  localparam int unsigned EXP_BITS_B = fpnew_pkg_snax::exp_bits(FpFormat_b);
-  localparam int unsigned MAN_BITS_B = fpnew_pkg_snax::man_bits(FpFormat_b);
-  localparam int unsigned BIAS_B = fpnew_pkg_snax::bias(FpFormat_b);
+  localparam int unsigned EXP_BITS_A = fpnew_pkg_snax::exp_bits(FpFormat_in);
+  localparam int unsigned MAN_BITS_A = fpnew_pkg_snax::man_bits(FpFormat_in);
+  localparam int unsigned BIAS_A = fpnew_pkg_snax::bias(FpFormat_in);
+
   // for operand C and result
   localparam int unsigned EXP_BITS_C = fpnew_pkg_snax::exp_bits(FpFormat_out);
   localparam int unsigned MAN_BITS_C = fpnew_pkg_snax::man_bits(FpFormat_out);
   localparam int unsigned BIAS_C = fpnew_pkg_snax::bias(FpFormat_out);
 
   localparam int unsigned PRECISION_BITS_A = MAN_BITS_A + 1;
-  localparam int unsigned PRECISION_BITS_B = MAN_BITS_B + 1;
   localparam int unsigned PRECISION_BITS_C = MAN_BITS_C + 1;
 
-  localparam int unsigned MUL_WIDTH = PRECISION_BITS_A + PRECISION_BITS_B;  // Same as LOWER_SUM_WIDTH in original
+  localparam int unsigned MUL_WIDTH = 2 * PRECISION_BITS_A;
   localparam int unsigned LZC_RESULT_WIDTH = $clog2(MUL_WIDTH);
   localparam int unsigned EXP_WIDTH = unsigned'(fpnew_pkg_snax::maximum(EXP_BITS_C + 2, LZC_RESULT_WIDTH));
 
@@ -59,11 +51,6 @@ module fp_mul #(
     logic [MAN_BITS_A-1:0] mantissa;
   } fp_a_t;
 
-  typedef struct packed {
-    logic                  sign;
-    logic [EXP_BITS_B-1:0] exponent;
-    logic [MAN_BITS_B-1:0] mantissa;
-  } fp_b_t;
 
   typedef struct packed {
     logic                  sign;
@@ -77,13 +64,12 @@ module fp_mul #(
   // -----------------
   fpnew_pkg_snax::fp_info_t [1:0] info_q;
   fp_a_t                          operand_a;
-  fp_b_t                          operand_b;
-  fpnew_pkg_snax::fp_info_t info_a, info_b;
+  fpnew_pkg_snax::fp_info_t       info_a;
 
 
   // Classify input
   fpnew_classifier_snax #(
-      .FpFormat   (FpFormat_a),
+      .FpFormat   (FpFormat_in),
       .NumOperands(1)
   ) i_class_inputs_a (
       .operands_i(operand_a_i),
@@ -91,20 +77,10 @@ module fp_mul #(
       .info_o    (info_q[0])
   );
 
-  fpnew_classifier_snax #(
-      .FpFormat   (FpFormat_b),
-      .NumOperands(1)
-  ) i_class_inputs_b (
-      .operands_i(operand_b_i),
-      .is_boxed_i(1'b1),
-      .info_o    (info_q[1])
-  );
 
   // Default assignments - packing-order-agnostic
   assign operand_a = operand_a_i;
-  assign operand_b = operand_b_i;
   assign info_a    = info_q[0];
-  assign info_b    = info_q[1];
 
 
   // Input classification
@@ -116,13 +92,13 @@ module fp_mul #(
   logic tentative_sign;
 
   // Reduction for special case handling
-  assign any_operand_inf = (|{info_a.is_inf, info_b.is_inf});
-  assign any_operand_nan = (|{info_a.is_nan, info_b.is_nan});
-  assign signalling_nan  = (|{info_a.is_signalling, info_b.is_signalling});
-  // Effective subtraction in FMA occurs when product and addend signs differ
+  assign any_operand_inf = info_a.is_inf;
+  assign any_operand_nan = info_a.is_nan;
+  assign signalling_nan  = info_a.is_signalling;
+
   logic result_sign;
 
-  assign result_sign = operand_a.sign ^ operand_b.sign;
+  assign result_sign = operand_a.sign ^ 0;
   // ----------------------
   // Special case handling
   // ----------------------
@@ -134,17 +110,14 @@ module fp_mul #(
     special_result = '{sign: 1'b0, exponent: '1, mantissa: 2 ** (MAN_BITS_C - 1)};  // canonical qNaN
     result_is_special = 1'b0;
 
-    if ((info_a.is_inf && info_b.is_zero) || (info_a.is_zero && info_b.is_inf)) begin
-      result_is_special = 1'b1;
-      special_result = '{sign: operand_a.sign ^ operand_b.sign, exponent: '1, mantissa: 2 ** (MAN_BITS_C - 1)};
-    end else if (any_operand_nan) begin
+    if (any_operand_nan) begin
       result_is_special = 1'b1;
     end else if (any_operand_inf) begin
       result_is_special = 1'b1;
-      if ((info_a.is_inf || info_b.is_inf) && effective_subtraction)
+      if ((info_a.is_inf) && effective_subtraction)
         special_result = '{sign: 1'b0, exponent: '1, mantissa: 2 ** (MAN_BITS_C - 1)};
-      else if (info_a.is_inf || info_b.is_inf) begin
-        special_result = '{sign: operand_a.sign ^ operand_b.sign, exponent: '1, mantissa: '0};
+      else if (info_a.is_inf) begin
+        special_result = '{sign: operand_a.sign ^ 0, exponent: '1, mantissa: '0};
       end
     end
   end
@@ -154,32 +127,25 @@ module fp_mul #(
   // Initial exponent data path
   // ---------------------------
   logic signed [EXP_BITS_A-1:0] exponent_a;
-  logic signed [EXP_BITS_B-1:0] exponent_b;
   logic signed [ EXP_WIDTH-1:0] exponent_product;
 
 
   assign exponent_a = signed'({1'b0, operand_a.exponent});
-  assign exponent_b = signed'({1'b0, operand_b.exponent});
 
-  assign exponent_product = (info_a.is_zero || info_b.is_zero) ? 2 - signed'(BIAS_C)  // [NOTE]
-      : signed'(exponent_a + info_a.is_subnormal - signed'(BIAS_A)
-                                        + exponent_b + info_b.is_subnormal - signed'(BIAS_B)
-                                        + signed'(BIAS_C));
-
+  assign exponent_product = (info_a.is_zero) ? 2 - signed'(BIAS_C)  // [NOTE]
+      : signed'(exponent_a + info_a.is_subnormal - signed'(BIAS_A) + signed'(BIAS_C));
 
   // ------------------
   // Product data path
   // ------------------
   logic [PRECISION_BITS_A-1:0] mantissa_a;
-  logic [PRECISION_BITS_B-1:0] mantissa_b;
   logic [MUL_WIDTH-1:0] product;
 
   // Add implicit bits to mantissa
   assign mantissa_a = {info_a.is_normal, operand_a.mantissa};
-  assign mantissa_b = {info_b.is_normal, operand_b.mantissa};
 
   // Mantissa multiplier (a*b)
-  assign product = mantissa_a * mantissa_b;
+  assign product = mantissa_a * (1 << MAN_BITS_A);
 
   // --------------
   // Normalization

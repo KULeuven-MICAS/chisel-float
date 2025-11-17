@@ -195,12 +195,13 @@ trait FpUtils {
     * of operations on randomly sampled numbers will not overflow with high probability
     */
   def genRandomValue(fpType: FpType)(implicit rng: Option[scala.util.Random] = None): Float = {
-    val expMargin   = 0.4
+    val extraMargin = 0.5f
+    val expMargin   = 0.1
     val maxExpWidth = math.max((expMargin * fpType.expWidth).toInt, 1)
     val maxExponent = ((1 << (maxExpWidth - 1)) - 1)
     val maxVal      = (1 << maxExponent).toFloat
     val r           = rng.getOrElse(new scala.util.Random())
-    (2 * r.nextFloat() - 1f) * maxVal
+    (2 * r.nextFloat() - 1f) * maxVal * extraMargin
     // Test with ints
     // ((2 * r.nextFloat() - 1f) * maxVal).toInt.toFloat
   }
