@@ -185,7 +185,12 @@ class FpFmaFpTest extends AnyFlatSpec with Matchers with ChiselScalatestTester w
       .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
   }
 
-// Special cases
+  it should "perform BF16 x FP16 + FP16 FMA correctly" in {
+    test(new FpFmaFp(typeA = BF16, typeB = FP16, typeC = FP16))
+      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
+  }
+
+  // Special cases
   it should "handle FP32 x FP8 + BF16 special cases" in {
     test(new FpFmaFp(typeA = FP32, typeB = FP8, typeC = BF16))
       .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testSpecialCases(dut) }

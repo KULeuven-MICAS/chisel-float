@@ -241,6 +241,7 @@ trait FpUtils {
   implicit class FpHardwareOps(a: (Float, FpType)) {
     def *(b: (Float, FpType)): Float = fpOperationHardware(a._1, b._1, a._2, b._2, _ * _)
     def +(b: (Float, FpType)): Float = fpOperationHardware(a._1, b._1, a._2, b._2, _ + _)
+    def -(b: (Float, FpType)): Float = fpOperationHardware(a._1, b._1, a._2, b._2, _ - _)
 
     /** Not to be confused with the Chisel3 === operator */
     def ===(b: UInt): Boolean = fpEqualsHardware(a._1, b, a._2, lsbTolerance = 0)

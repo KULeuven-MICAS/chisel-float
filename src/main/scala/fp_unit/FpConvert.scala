@@ -41,9 +41,13 @@ class FpConvert(val typeA: FpType, val typeC: FpType) extends Module with Requir
     val out  = Output(UInt(typeC.W))
   })
 
-  val sv_module = Module(new FpConvertBlackBox(typeA, typeC))
-  sv_module.io.operand_a_i := io.in_a
-  io.out                   := sv_module.io.result_o
+  if (typeA == typeC) {
+    io.out := io.in_a
+  } else {
+    val sv_module = Module(new FpConvertBlackBox(typeA, typeC))
+    sv_module.io.operand_a_i := io.in_a
+    io.out                   := sv_module.io.result_o
+  }
 
 }
 
