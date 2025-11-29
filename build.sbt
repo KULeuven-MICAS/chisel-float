@@ -9,7 +9,7 @@ Test / fork              := true
 
 val chiselVersion = "6.4.0"
 
-lazy val chiselFloat = (project in file("."))
+lazy val chisel_float = (project in file("."))
   .settings(
     name := "chisel-float",
     libraryDependencies ++= Seq(
