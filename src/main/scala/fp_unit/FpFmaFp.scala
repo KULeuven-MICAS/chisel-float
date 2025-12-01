@@ -1,7 +1,7 @@
 // Copyright 2025 KU Leuven.
 // KU Leuven confidential. Do not distribute.
 //
-// Author : Robin Geens <robin.geens@kuleuven.be>
+// Author: Robin Geens <robin.geens@kuleuven.be>
 
 package fp_unit
 
