@@ -61,6 +61,10 @@ class FpConvertTest extends AnyFlatSpec with Matchers with ChiselScalatestTester
       .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testAllConvert(dut) }
   }
 
+  it should "convert FP8 to BF16 correctly" in {
+    test(new FpConvert(typeA = FP8, typeC = BF16))
+      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testAllConvert(dut) }
+  }
   it should "convert FP16 to FP32 correctly" in {
     test(new FpConvert(typeA = FP16, typeC = FP32))
       .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testAllConvert(dut) }

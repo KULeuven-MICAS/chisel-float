@@ -15,6 +15,7 @@ abstract class DataType {
 abstract class FpType extends DataType {
   val expWidth: Int
   val sigWidth: Int
+  val isIEEE754: Boolean = true
   def width = expWidth + sigWidth + 1
   // Corresponding enum name in fpnew_pkg_snax::fp_format_e
   val fpnewFormatEnum: String
@@ -44,6 +45,14 @@ object FP8 extends FpType {
   val expWidth        = 5
   val sigWidth        = 2
   val fpnewFormatEnum = "fpnew_pkg_snax::FP8"
+}
+
+/** Doesn't follow IEEE 754 standard and uses all bins for value representation instead. */
+object FP8_ALT extends FpType {
+  val expWidth           = 5
+  val sigWidth           = 2
+  val fpnewFormatEnum    = "custom"
+  override val isIEEE754 = false
 }
 
 object Int1  extends IntType(1)

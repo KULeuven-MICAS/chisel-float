@@ -20,7 +20,7 @@ trait FpUtils {
     * @returns
     *   (shifted and rounded value, carry out)
     */
-  def round(value: BigInt, shift: Int, targetWidth: Int): (BigInt, Boolean) = {
+  private def round(value: BigInt, shift: Int, targetWidth: Int): (BigInt, Boolean) = {
     if (shift <= 0) { return (value << -shift, false) }
 
     val roundPos   = shift - 1
@@ -47,7 +47,7 @@ trait FpUtils {
   }
 
   /** Generalized helper function to encode Float as UInt */
-  def floatToUInt(expWidth: Int, sigWidth: Int, value: Float): BigInt = {
+  private def floatToUInt(expWidth: Int, sigWidth: Int, value: Float): BigInt = {
     val expSigWidth = expWidth + sigWidth
     val totalWidth  = expSigWidth + 1
 
@@ -128,8 +128,71 @@ trait FpUtils {
     BigInt(bitsTarget & ((1L << totalWidth) - 1)) // Mask to ensure valid bit-width
   }
 
+  /** Generalized helper function to encode Float as UInt, doesn't follow IEEE 754 standard but uses all bins for value
+    * representation. This means there are no subnormals or special values.
+    */
+  private def floatToUInt_nonIEEE754(expWidth: Int, sigWidth: Int, value: Float): BigInt = {
+    val expSigWidth = expWidth + sigWidth
+    val totalWidth  = expSigWidth + 1
+
+    // Convert to IEEE 754 32-bit float representation
+    val bits32 = java.lang.Float.floatToIntBits(value)
+
+    // Extract sign, exponent, and significand
+    val sign     = (bits32 >>> 31) & 0x1
+    val exponent = (bits32 >>> 23) & 0xff
+    val frac     = BigInt(bits32 & 0x7fffff)
+
+    // Re-normalize the exponent to fit expWidth
+    val biasTarget   = expBias(expWidth)
+    val maxExpTarget = (1 << expWidth) - 1
+    val tentativeExp = (exponent - BIAS32 + biasTarget)
+
+    val bitsTarget =
+      if (exponent == 0xff && frac != 0) {
+        // Canonical NaN: all exponent bits 1, MSB of fraction 1, rest 0
+        throw new NotImplementedError("Non-IEEE 754 format cannot represent NaN")
+
+      } else if (exponent == 0xff && frac == 0) {
+        // Infinity: all exponent bits 1, fraction 0
+        throw new NotImplementedError("Non-IEEE 754 format cannot represent inf")
+
+      } else if (exponent == 0 && frac == 0) {
+        // True zero
+        sign << expSigWidth
+
+      } else if (tentativeExp > maxExpTarget) {
+        // Overflow -> max value
+        (sign << expSigWidth) | (maxExpTarget << sigWidth) | ((1 << sigWidth) - 1)
+
+      } else if (exponent == 0 && tentativeExp < 0) {
+        // From subnormal to subnormal
+        // No subnormals in non-IEEE 754 format -> return zero
+        sign << expSigWidth
+
+      } else if (exponent == 0 && tentativeExp > 0) {
+        // From subnormal to normal
+        throw new NotImplementedError("From subnormal to normal")
+
+        // tentativeExp can be = 0 (which is a subnormal value in IEEE 754, but we now consider it normal)
+      } else {
+        // Normal to normal
+        val shift                = 23 - sigWidth
+        val (roundedFrac, carry) = round(frac, shift, sigWidth)
+        val expFinal             = if (carry) tentativeExp + 1 else tentativeExp
+        if (expFinal >= maxExpTarget) {
+          // Overflow to infinity
+          throw new NotImplementedError("Non-IEEE 754 format cannot represent overflow")
+        } else {
+          (sign << expSigWidth) | (expFinal << sigWidth) | roundedFrac.toLong
+        }
+      }
+
+    BigInt(bitsTarget & ((1L << totalWidth) - 1)) // Mask to ensure valid bit-width
+  }
+
   /** Generalized helper function to decode UInt to Float */
-  def uintToFloat(expWidth: Int, sigWidth: Int, bits: BigInt): Float = {
+  private def uintToFloat(expWidth: Int, sigWidth: Int, bits: BigInt): Float = {
     // Extract sign, exponent, and significand
     val signSrc     = (bits >> (expWidth + sigWidth)) & 0x1
     val exponentSrc = (bits >> sigWidth) & ((1 << expWidth) - 1)
@@ -179,10 +242,46 @@ trait FpUtils {
     java.lang.Float.intBitsToFloat(bits32.toInt)
   }
 
-  def floatToUInt(fpType: FpType, value: Float):  BigInt = floatToUInt(fpType.expWidth, fpType.sigWidth, value)
-  def uintToFloat(fpType: FpType, value: BigInt): Float  = uintToFloat(fpType.expWidth, fpType.sigWidth, value)
-  def uintToFloat(fpType: FpType, value: UInt):   Float  = uintToFloat(fpType.expWidth, fpType.sigWidth, value.litValue)
-  def quantize(fpType:    FpType, value: Float):  Float  = uintToFloat(fpType, floatToUInt(fpType, value))
+  /** Generalized helper function to decode UInt to Float, doesn't follow IEEE 754 standard but uses all bins for value
+    * representation. This means there are no subnormals or special values.
+    */
+  private def uintToFloat_nonIEEE754(expWidth: Int, sigWidth: Int, bits: BigInt): Float = {
+    // Extract sign, exponent, and significand
+    val signSrc     = (bits >> (expWidth + sigWidth)) & 0x1
+    val exponentSrc = (bits >> sigWidth) & ((1 << expWidth) - 1)
+    val fracSrc     = bits & ((1 << sigWidth) - 1)
+
+    val biasSrc  = expBias(expWidth)
+    val biasDiff = BIAS32 - biasSrc
+
+    val bits32 =
+      if (exponentSrc == 0 && fracSrc == 0) {
+        // True zero
+        signSrc << 31
+
+      } else if (biasDiff < 0) {
+        // Normal to subnormal
+        throw new NotImplementedError("From normal to subnormal")
+
+      } else {
+        val frac32 = fracSrc.toInt << (23 - sigWidth)
+        val exp32  = exponentSrc - biasSrc + BIAS32
+        (signSrc << 31) | (exp32 << 23) | frac32
+      }
+
+    java.lang.Float.intBitsToFloat(bits32.toInt)
+  }
+
+  def floatToUInt(fpType: FpType, value: Float): BigInt =
+    if (fpType.isIEEE754) floatToUInt(fpType.expWidth, fpType.sigWidth, value)
+    else floatToUInt_nonIEEE754(fpType.expWidth, fpType.sigWidth, value)
+
+  def uintToFloat(fpType: FpType, value: BigInt): Float =
+    if (fpType.isIEEE754) uintToFloat(fpType.expWidth, fpType.sigWidth, value)
+    else uintToFloat_nonIEEE754(fpType.expWidth, fpType.sigWidth, value)
+
+  def uintToFloat(fpType: FpType, value: UInt):  Float = uintToFloat(fpType, value.litValue)
+  def quantize(fpType:    FpType, value: Float): Float = uintToFloat(fpType, floatToUInt(fpType, value))
 
   /** Generate a true random value in the given FpType, where exponent and mantissa are sampled independently */
   def getTrueRandomValue(fpType: FpType)(implicit rng: Option[scala.util.Random] = None): Float = {
