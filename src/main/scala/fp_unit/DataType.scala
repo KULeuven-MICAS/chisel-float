@@ -51,7 +51,7 @@ object FP8 extends FpType {
 object FP8_ALT extends FpType {
   val expWidth           = 5
   val sigWidth           = 2
-  val fpnewFormatEnum    = "custom"
+  val fpnewFormatEnum    = "fpnew_pkg_snax::FP8"
   override val isIEEE754 = false
 }
 
