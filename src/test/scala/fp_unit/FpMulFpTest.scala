@@ -46,7 +46,9 @@ class FpMulFpTest extends AnyFlatSpec with Matchers with ChiselScalatestTester w
   }
 
   def testAll(dut: FpMulFp) = {
-    val testCases = Seq.fill(test_num)((genRandomValue(dut.typeA), genRandomValue(dut.typeB)))
+    val testCases = Seq.fill(test_num)((genRandomValue(dut.typeA), genRandomValue(dut.typeB))) ++ Seq.fill(test_num)(
+      (getTrueRandomValue(dut.typeA), getTrueRandomValue(dut.typeB))
+    )
     testCases.zipWithIndex.foreach { case ((a, b), index) => testSingle(dut, index + 1, a, b) }
   }
 

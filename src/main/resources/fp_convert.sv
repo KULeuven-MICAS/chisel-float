@@ -40,7 +40,9 @@ module fp_convert #(
 
   localparam int unsigned MUL_WIDTH = 2 * PRECISION_BITS_A;
   localparam int unsigned LZC_RESULT_WIDTH = $clog2(MUL_WIDTH);
-  localparam int unsigned EXP_WIDTH = unsigned'(fpnew_pkg_snax::maximum(EXP_BITS_C + 2, LZC_RESULT_WIDTH));
+  localparam int unsigned EXP_WIDTH = unsigned'(fpnew_pkg_snax::maximum(
+      fpnew_pkg_snax::maximum(EXP_BITS_C, EXP_BITS_A) + 2, LZC_RESULT_WIDTH
+  ));
 
   // ----------------
   // Type definition
@@ -145,7 +147,7 @@ module fp_convert #(
   assign mantissa_a = {info_a.is_normal, operand_a.mantissa};
 
   // Mantissa multiplier (a*b)
-  assign product = mantissa_a * (1 << MAN_BITS_A);
+  assign product = mantissa_a << MAN_BITS_A;
 
   // --------------
   // Normalization

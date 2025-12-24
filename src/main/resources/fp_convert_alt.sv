@@ -41,7 +41,9 @@ module fp_convert #(
 
   localparam int unsigned MUL_WIDTH = 2 * PRECISION_BITS_A;
   localparam int unsigned LZC_RESULT_WIDTH = $clog2(MUL_WIDTH);
-  localparam int unsigned EXP_WIDTH = unsigned'(fpnew_pkg_snax::maximum(EXP_BITS_C + 2, LZC_RESULT_WIDTH));
+  localparam int unsigned EXP_WIDTH = unsigned'(fpnew_pkg_snax::maximum(
+      fpnew_pkg_snax::maximum(EXP_BITS_C, EXP_BITS_A) + 2, LZC_RESULT_WIDTH
+  ));
 
   // ----------------
   // Type definition
@@ -132,7 +134,7 @@ module fp_convert #(
   assign mantissa_a = {info_a.is_normal, operand_a.mantissa};
 
   // Mantissa multiplier (a*b)
-  assign product = mantissa_a * (1 << MAN_BITS_A);
+  assign product = mantissa_a << MAN_BITS_A;
 
   // --------------
   // Normalization
@@ -219,13 +221,13 @@ module fp_convert #(
 
   // Assemble result before rounding. In case of overflow, the largest normal value is set.
   assign pre_round_sign = result_sign;
-  assign pre_round_exponent = (of_before_round) ? 2 ** EXP_BITS_C - 2 : unsigned'(final_exponent[EXP_BITS_C-1:0]);
+  assign pre_round_exponent = unsigned'(final_exponent[EXP_BITS_C-1:0]);
   // Discard implicit leading bit. Bit 0 is R bit
-  assign pre_round_mantissa = (of_before_round) ? '1 : final_mantissa[MAN_BITS_C:1];
+  assign pre_round_mantissa = final_mantissa[MAN_BITS_C:1];
   assign pre_round_abs = {pre_round_exponent, pre_round_mantissa};
 
   // In case of overflow, the round and sticky bits are set for proper rounding
-  assign round_sticky_bits = (of_before_round) ? 2'b11 : {final_mantissa[0], sticky_after_norm};
+  assign round_sticky_bits = {final_mantissa[0], sticky_after_norm};
 
   // Perform rounding
   fpnew_rounding_snax #(
@@ -246,7 +248,7 @@ module fp_convert #(
   // -----------------
   logic [WIDTH_out-1:0] regular_result;
 
-  assign regular_result    = {rounded_sign, rounded_abs};
+  assign regular_result    = (of_before_round) ? {pre_round_sign, {(WIDTH_out-1){1'b1}}} : {rounded_sign, rounded_abs};
   assign result_o = result_is_special ? special_result : regular_result;
 
 

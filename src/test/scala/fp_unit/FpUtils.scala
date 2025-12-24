@@ -165,8 +165,7 @@ trait FpUtils {
         // Overflow -> max value
         (sign << expSigWidth) | (maxExpTarget << sigWidth) | ((1 << sigWidth) - 1)
 
-      } else if (exponent == 0 && tentativeExp < 0) {
-        // From subnormal to subnormal
+      } else if (tentativeExp < 0) {
         // No subnormals in non-IEEE 754 format -> return zero
         sign << expSigWidth
 
@@ -174,15 +173,15 @@ trait FpUtils {
         // From subnormal to normal
         throw new NotImplementedError("From subnormal to normal")
 
-        // tentativeExp can be = 0 (which is a subnormal value in IEEE 754, but we now consider it normal)
       } else {
         // Normal to normal
+        // tentativeExp can be = 0 (which is a subnormal value in IEEE 754, but we now consider it normal)
         val shift                = 23 - sigWidth
         val (roundedFrac, carry) = round(frac, shift, sigWidth)
         val expFinal             = if (carry) tentativeExp + 1 else tentativeExp
         if (expFinal >= maxExpTarget) {
-          // Overflow to infinity
-          throw new NotImplementedError("Non-IEEE 754 format cannot represent overflow")
+          // Overflow -> max value
+          (sign << expSigWidth) | (maxExpTarget << sigWidth) | ((1 << sigWidth) - 1)
         } else {
           (sign << expSigWidth) | (expFinal << sigWidth) | roundedFrac.toLong
         }
