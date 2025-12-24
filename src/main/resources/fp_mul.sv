@@ -153,9 +153,9 @@ module fp_mul #(
   // ---------------------------
   // Initial exponent data path
   // ---------------------------
-  logic signed [EXP_BITS_A-1:0] exponent_a;
-  logic signed [EXP_BITS_B-1:0] exponent_b;
-  logic signed [ EXP_WIDTH-1:0] exponent_product;
+  logic signed [ EXP_BITS_A:0] exponent_a;
+  logic signed [ EXP_BITS_B:0] exponent_b;
+  logic signed [EXP_WIDTH-1:0] exponent_product;
 
 
   assign exponent_a = signed'({1'b0, operand_a.exponent});
