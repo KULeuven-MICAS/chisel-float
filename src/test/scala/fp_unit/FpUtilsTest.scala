@@ -11,7 +11,7 @@ import org.scalatest.matchers.should.Matchers
 class FpUtilsTest extends AnyFlatSpec with Matchers with FpUtils {
   behavior of "FpUtils floatToUInt and uintToFloat conversions"
 
-  val fpTypes: Seq[FpType] = Seq(FP16, FP32, BF16)
+  val fpTypes: Seq[FpType] = Seq(FP16, FP32, BF16, FP8_ALT)
   val numTests = 1000
 
   // Special values
@@ -27,7 +27,7 @@ class FpUtilsTest extends AnyFlatSpec with Matchers with FpUtils {
   def maxFinite(fpType: FpType): Float = {
     val maxExp  = (1 << (fpType.expWidth - 1)) - 1
     val maxFrac = (1 << fpType.sigWidth) - 1
-    val bits    = (0 << (fpType.expWidth + fpType.sigWidth)) | (maxExp << fpType.sigWidth) | maxFrac
+    val bits    = (maxExp << fpType.sigWidth) | maxFrac
     uintToFloat(fpType, BigInt(bits))
   }
   def minFinite(fpType: FpType): Float = -maxFinite(fpType)
@@ -35,8 +35,13 @@ class FpUtilsTest extends AnyFlatSpec with Matchers with FpUtils {
   /** Helper: get largest and smallest normal values for a given FpType */
   def largestNormal(fpType: FpType): Float = maxFinite(fpType)
   def smallestNormal(fpType: FpType): Float = {
-    val minNormalBits = (1 << fpType.sigWidth) // exponent=1, fraction=0
-    uintToFloat(fpType, BigInt(minNormalBits))
+    if (fpType.isIEEE754) {
+      val minNormalBits = (1 << fpType.sigWidth) // exponent=1, fraction=0
+      uintToFloat(fpType, BigInt(minNormalBits))
+    } else {
+      val minNormalBits = 1 // exponent=0, fraction=00...01 (0 is reserved for true zero)
+      uintToFloat(fpType, BigInt(minNormalBits))
+    }
   }
 
   /** Helper: is value representable as finite in fpType? */
@@ -44,6 +49,26 @@ class FpUtilsTest extends AnyFlatSpec with Matchers with FpUtils {
     val max = maxFinite(fpType)
     val min = minFinite(fpType)
     v <= max && v >= min && !v.isNaN && !v.isInfinite
+  }
+
+  /** Helper: get appropriate relative tolerance for a given FpType based on its significand width. Lower precision
+    * formats (fewer significand bits) require larger tolerances. This is a multiplicative tolerance (relative error).
+    */
+  def getTolerance(fpType: FpType): Float = {
+    fpType.sigWidth match {
+      case w if w <= 2 => 0.5f  // FP8_ALT (sigWidth=2): very low precision, ~50% relative error
+      case w if w <= 7 => 1e-1f // BF16 (sigWidth=7): medium precision, ~10% relative error
+      case _ => 1e-3f // FP16 (sigWidth=10), FP32 (sigWidth=23): high precision, ~0.1% relative error
+    }
+  }
+
+  /** Helper: get absolute tolerance for a given value and relative tolerance. For zero, fall back to absolute
+    * tolerance.
+    */
+  def getAbsoluteTolerance(value: Float, relTol: Float): Float = {
+    val computedTol = Math.abs(value) * relTol
+    val minTol      = Math.ulp(1.0f)
+    math.max(computedTol, minTol)
   }
 
   /** Helper: generate random normal values within representable range (excluding subnormals) */
@@ -69,14 +94,15 @@ class FpUtilsTest extends AnyFlatSpec with Matchers with FpUtils {
     for (fpType <- fpTypes) {
       val typeName  = fpType.getClass.getSimpleName
       val normals   = randomNormals(fpType, numTests)
-      val tolerance = if (fpType eq BF16) 1e-1f else 1e-3f
+      val tolerance = getTolerance(fpType)
       for (v <- normals :+ largestNormal(fpType) :+ smallestNormal(fpType)) {
         val uint = floatToUInt(fpType, v)
         val back = uintToFloat(fpType, uint)
-        val tol  = Math.max(Math.ulp(v) * 2, tolerance)
-        if (isFiniteInType(fpType, v))
-          withClue(s"$typeName normal $v: uint=$uint back=$back tol=$tol") { back shouldBe (v +- tol) }
-        else
+        if (isFiniteInType(fpType, v)) {
+          withClue(s"$typeName normal $v: uint=$uint back=$back relTol=$tolerance") {
+            back shouldBe (v +- getAbsoluteTolerance(v, tolerance))
+          }
+        } else
           withClue(s"$typeName normal $v (out of range): uint=$uint back=$back") {
             back.isInfinite || back.isNaN shouldBe true
           }
@@ -95,8 +121,8 @@ class FpUtilsTest extends AnyFlatSpec with Matchers with FpUtils {
     }
   }
 
-  it should "convert infinities correctly for all FP types" in {
-    for (fpType <- fpTypes) {
+  it should "convert infinities correctly for all IEEE 754 FP types" in {
+    for (fpType <- fpTypes.filter(_.isIEEE754)) {
       val typeName = fpType.getClass.getSimpleName
       for (v <- infinities) {
         val uint = floatToUInt(fpType, v)
@@ -104,13 +130,14 @@ class FpUtilsTest extends AnyFlatSpec with Matchers with FpUtils {
         withClue(s"$typeName infinity $v: uint=$uint back=$back") {
           back.isInfinite shouldBe true
           back.sign shouldBe v.sign
+
         }
       }
     }
   }
 
-  it should "convert NaNs correctly for all FP types" in {
-    for (fpType <- fpTypes) {
+  it should "convert NaNs correctly for all IEEE 754 FP types" in {
+    for (fpType <- fpTypes.filter(_.isIEEE754)) {
       val typeName = fpType.getClass.getSimpleName
       for (v <- nans) {
         val uint = floatToUInt(fpType, v)
@@ -124,19 +151,21 @@ class FpUtilsTest extends AnyFlatSpec with Matchers with FpUtils {
     for (fpType <- fpTypes) {
       val typeName  = fpType.getClass.getSimpleName
       val normals   = randomNormals(fpType, numTests)
-      val tolerance = if (fpType eq BF16) 1e-1f else 1e-3f
-      val values    =
-        zeros ++ normals ++ subnormals ++ infinities ++ nans ++ Seq(largestNormal(fpType), smallestNormal(fpType))
+      val tolerance = getTolerance(fpType)
+      var values    = zeros ++ normals ++ subnormals ++ Seq(largestNormal(fpType), smallestNormal(fpType))
+      if (fpType.isIEEE754) values ++= infinities ++ nans
+
       for (v <- values) {
         val uint = floatToUInt(fpType, v)
         val back = uintToFloat(fpType, uint)
-        val tol  = Math.max(Math.ulp(v) * 2, tolerance)
-        if (isFiniteInType(fpType, v)) {
-          withClue(s"$typeName float->uint->float $v: uint=$uint back=$back tol=$tol") { back shouldBe (v +- tol) }
+        if (v == 0.0f || v == -0.0f) {
+          withClue(s"$typeName float->uint->float $v: uint=$uint back=$back") { back should (be(0.0f) or be(-0.0f)) }
+        } else if (isFiniteInType(fpType, v)) {
+          withClue(s"$typeName float->uint->float $v: uint=$uint back=$back relTol=$tolerance") {
+            back shouldBe (v +- getAbsoluteTolerance(v, tolerance))
+          }
         } else if (v.isNaN) {
           withClue(s"$typeName float->uint->float $v: uint=$uint back=$back") { back.isNaN shouldBe true }
-        } else if (v == 0.0f || v == -0.0f) {
-          withClue(s"$typeName float->uint->float $v: uint=$uint back=$back") { back should (be(0.0f) or be(-0.0f)) }
         } else if (v.isInfinite) {
           withClue(s"$typeName float->uint->float $v: uint=$uint back=$back") {
             back.isInfinite shouldBe true
@@ -148,7 +177,7 @@ class FpUtilsTest extends AnyFlatSpec with Matchers with FpUtils {
   }
 
   it should "round-trip uint->float->uint for all FP types" in {
-    for (fpType <- fpTypes) {
+    for (fpType <- fpTypes.filter(_.isIEEE754)) {
       val typeName = fpType.getClass.getSimpleName
       val r        = new scala.util.Random(0)
       for (_ <- 0 until numTests) {

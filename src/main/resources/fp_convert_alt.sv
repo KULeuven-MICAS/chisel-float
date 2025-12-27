@@ -5,6 +5,7 @@
 
 // Copyright 2025 KU Leuven
 // Modified by: Robin Geens <robin.geens@kuleuven.be>
+// Converts IEEE 754 compliant floating point to non-IEEE 754 compliant floating point.
 
 // For now, this is implemented as a multiplication with constant 1 (exp=BIAS_IN, mantissa=1).
 module fp_convert #(
@@ -107,23 +108,9 @@ module fp_convert #(
   fp_t_out special_result;
   logic    result_is_special;
 
-  always_comb begin : special_cases
-    // Default assignments
-    special_result = '{sign: 1'b0, exponent: '1, mantissa: 2 ** (MAN_BITS_C - 1)};  // canonical qNaN
-    result_is_special = 1'b0;
-
-    if (any_operand_nan) begin
-      result_is_special = 1'b1;
-    end else if (any_operand_inf) begin
-      result_is_special = 1'b1;
-      if ((info_a.is_inf) && effective_subtraction)
-        special_result = '{sign: 1'b0, exponent: '1, mantissa: 2 ** (MAN_BITS_C - 1)};
-      else if (info_a.is_inf) begin
-        special_result = '{sign: operand_a.sign ^ 0, exponent: '1, mantissa: '0};
-      end
-    end
-  end
-
+  // Non-IEEE 754 compliant floating point has no special cases, so we put everything to 0
+  assign special_result = 0;
+  assign result_is_special = any_operand_nan || any_operand_inf;
 
   // ---------------------------
   // Initial exponent data path
@@ -185,15 +172,14 @@ module fp_convert #(
   assign leading_zero_count_sgn = signed'({1'b0, leading_zero_count});
 
   always_comb begin : norm_shift_amount
-    if ((exponent_product - leading_zero_count_sgn + 1 > 0) && !lzc_zeroes) begin
+    // We also map the case that would result in subnormals to a normal number (hence >= 0 and not > 0)
+    if ((exponent_product - leading_zero_count_sgn + 1 >= 0) && !lzc_zeroes) begin
       normalized_exponent = exponent_product - leading_zero_count_sgn + 1;  // Account for LZC shift
       // Account for 1 bit wider result. Cancel out leading zeros. Mantissa's hidden bit will now be at MSB
       product_shifted = product << (leading_zero_count + 1);
     end else begin
-      // Subnormal result. Exponent is 0
       normalized_exponent = 0;
-      // Align mantissa with minimum exponent. Mantissa MSB must not be discarded later: subnormals have no hidden bit
-      product_shifted = product << 1 >> unsigned'(-exponent_product);
+      product_shifted = 0;
     end
   end
 
@@ -235,13 +221,13 @@ module fp_convert #(
 
   // Assemble result before rounding. In case of overflow, the largest normal value is set.
   assign pre_round_sign = result_sign;
-  assign pre_round_exponent = (of_before_round) ? 2 ** EXP_BITS_C - 2 : unsigned'(final_exponent[EXP_BITS_C-1:0]);
+  assign pre_round_exponent = unsigned'(final_exponent[EXP_BITS_C-1:0]);
   // Discard implicit leading bit. Bit 0 is R bit
-  assign pre_round_mantissa = (of_before_round) ? '1 : final_mantissa[MAN_BITS_C:1];
+  assign pre_round_mantissa = final_mantissa[MAN_BITS_C:1];
   assign pre_round_abs = {pre_round_exponent, pre_round_mantissa};
 
   // In case of overflow, the round and sticky bits are set for proper rounding
-  assign round_sticky_bits = (of_before_round) ? 2'b11 : {final_mantissa[0], sticky_after_norm};
+  assign round_sticky_bits = {final_mantissa[0], sticky_after_norm};
 
   // Perform rounding
   fpnew_rounding_snax #(
@@ -262,7 +248,7 @@ module fp_convert #(
   // -----------------
   logic [WIDTH_out-1:0] regular_result;
 
-  assign regular_result    = {rounded_sign, rounded_abs};
+  assign regular_result    = (of_before_round) ? {pre_round_sign, {(WIDTH_out-1){1'b1}}} : {rounded_sign, rounded_abs};
   assign result_o = result_is_special ? special_result : regular_result;
 
 

@@ -46,7 +46,9 @@ class FpMulFpTest extends AnyFlatSpec with Matchers with ChiselScalatestTester w
   }
 
   def testAll(dut: FpMulFp) = {
-    val testCases = Seq.fill(test_num)((genRandomValue(dut.typeA), genRandomValue(dut.typeB)))
+    val testCases = Seq.fill(test_num)((genRandomValue(dut.typeA), genRandomValue(dut.typeB))) ++ Seq.fill(test_num)(
+      (getTrueRandomValue(dut.typeA), getTrueRandomValue(dut.typeB))
+    )
     testCases.zipWithIndex.foreach { case ((a, b), index) => testSingle(dut, index + 1, a, b) }
   }
 
@@ -69,6 +71,12 @@ class FpMulFpTest extends AnyFlatSpec with Matchers with ChiselScalatestTester w
       (0.0f, Float.MinPositiveValue)
     )
     specialCases.zipWithIndex.foreach { case ((a, b), index) => testSingle(dut, index + 1, a, b) }
+  }
+
+  it should "perform FP8_ALT x FP8_ALT = BF16 correctly" in {
+    test(
+      new FpMulFp(typeA = FP8_ALT, typeB = FP8_ALT, typeC = BF16)
+    ).withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
   }
 
   it should "perform FP16 x FP16 = FP32 correctly" in {

@@ -36,7 +36,35 @@ class FpMulFpBlackBox(typeA: FpType, typeB: FpType, typeC: FpType)
 
 }
 
+/** For non-IEEE 754 compliant floating point multiplication. */
+class FpMulFpAltBlackBox(typeA: FpType, typeB: FpType, typeC: FpType)
+    extends BlackBox(
+      Map(
+        "FpFormat_a"   -> RawParam(typeA.fpnewFormatEnum),
+        "FpFormat_b"   -> RawParam(typeB.fpnewFormatEnum),
+        "FpFormat_out" -> RawParam(typeC.fpnewFormatEnum)
+      )
+    )
+    with HasBlackBoxResource {
+
+  val io = IO(new Bundle {
+    val operand_a_i = Input(UInt(typeA.W))
+    val operand_b_i = Input(UInt(typeB.W))
+    val result_o    = Output(UInt(typeC.W))
+  })
+  override def desiredName: String = "fp_mul_alt"
+
+  addResource("common_block/fpnew_pkg_snax.sv")
+  addResource("common_block/fpnew_classifier.sv")
+  addResource("common_block/fpnew_rounding.sv")
+  addResource("common_block/lzc.sv")
+  addResource("fp_mul_alt.sv")
+
+}
+
 class FpMulFp(val typeA: FpType, val typeB: FpType, val typeC: FpType) extends Module with RequireAsyncReset {
+  require(typeA.isIEEE754 == typeB.isIEEE754, "IEEE 754 compliance of both operands must be the same")
+  require(typeC.isIEEE754, "non-IEEE 754 compliance of the result is not supported")
 
   val io = IO(new Bundle {
     val in_a = Input(UInt(typeA.W))
@@ -44,17 +72,23 @@ class FpMulFp(val typeA: FpType, val typeB: FpType, val typeC: FpType) extends M
     val out  = Output(UInt(typeC.W))
   })
 
-  val sv_module = Module(new FpMulFpBlackBox(typeA, typeB, typeC))
+  if (typeA.isIEEE754) {
+    val sv_module = Module(new FpMulFpBlackBox(typeA, typeB, typeC))
+    io.out                   := sv_module.io.result_o
+    sv_module.io.operand_a_i := io.in_a
+    sv_module.io.operand_b_i := io.in_b
 
-  io.out                   := sv_module.io.result_o
-  sv_module.io.operand_a_i := io.in_a
-  sv_module.io.operand_b_i := io.in_b
-
+  } else {
+    val sv_module = Module(new FpMulFpAltBlackBox(typeA, typeB, typeC))
+    io.out                   := sv_module.io.result_o
+    sv_module.io.operand_a_i := io.in_a
+    sv_module.io.operand_b_i := io.in_b
+  }
 }
 
 object FpMulFpEmitter extends App {
   emitVerilog(
-    new FpMulFp(typeA = BF16, typeB = BF16, typeC = BF16),
+    new FpMulFp(typeA = FP8_ALT, typeB = FP8_ALT, typeC = BF16),
     Array("--target-dir", "generated/fp_unit")
   )
 }

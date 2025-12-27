@@ -19,6 +19,8 @@ class FpConvertBlackBox(typeA: FpType, typeC: FpType)
     )
     with HasBlackBoxResource {
 
+  require(typeA.isIEEE754 && typeC.isIEEE754, "only supports IEEE 754 compliant floating point conversions")
+
   val io = IO(new Bundle {
     val operand_a_i = Input(UInt(typeA.W))
     val result_o    = Output(UInt(typeC.W))
@@ -33,7 +35,34 @@ class FpConvertBlackBox(typeA: FpType, typeC: FpType)
 
 }
 
-/** TODO why don't we use the blackbox directly? */
+class FpConvertBlackBoxAlt(typeA: FpType, typeC: FpType)
+    extends BlackBox(
+      Map(
+        "FpFormat_in"  -> RawParam(typeA.fpnewFormatEnum),
+        "FpFormat_out" -> RawParam(typeC.fpnewFormatEnum)
+      )
+    )
+    with HasBlackBoxResource {
+
+  require(
+    typeA.isIEEE754 && !typeC.isIEEE754,
+    "only supports IEEE 754 to non-IEEE 754 compliant floating point conversions"
+  )
+
+  val io = IO(new Bundle {
+    val operand_a_i = Input(UInt(typeA.W))
+    val result_o    = Output(UInt(typeC.W))
+  })
+  override def desiredName: String = "fp_convert"
+
+  addResource("common_block/fpnew_pkg_snax.sv")
+  addResource("common_block/fpnew_classifier.sv")
+  addResource("common_block/fpnew_rounding.sv")
+  addResource("common_block/lzc.sv")
+  addResource("fp_convert_alt.sv")
+
+}
+
 class FpConvert(val typeA: FpType, val typeC: FpType) extends Module with RequireAsyncReset {
 
   val io = IO(new Bundle {
@@ -43,10 +72,16 @@ class FpConvert(val typeA: FpType, val typeC: FpType) extends Module with Requir
 
   if (typeA == typeC) {
     io.out := io.in_a
-  } else {
+  } else if (typeA.isIEEE754 && typeC.isIEEE754) {
     val sv_module = Module(new FpConvertBlackBox(typeA, typeC))
     sv_module.io.operand_a_i := io.in_a
     io.out                   := sv_module.io.result_o
+  } else if (typeA.isIEEE754 && !typeC.isIEEE754) {
+    val sv_module = Module(new FpConvertBlackBoxAlt(typeA, typeC))
+    sv_module.io.operand_a_i := io.in_a
+    io.out                   := sv_module.io.result_o
+  } else {
+    throw new IllegalArgumentException(s"Unsupported conversion from ${typeA} to ${typeC}")
   }
 
 }
