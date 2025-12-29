@@ -7,7 +7,7 @@
 // Modified by: Man Shi <man.shi@kuleuven.be>
 //              Robin Geens <robin.geens@kuleuven.be>
 // Changes: allow for different a, b, and out data types; remove adder.
-// Implement non-IEEE 754 compliant floating point multiplication.
+// Implement non-IEEE 754 compliant floating point multiplication, resulting in an IEEE 754 compliant floating point.
 
 module fp_mul_alt #(
     parameter fpnew_pkg_snax::fp_format_e FpFormat_a   = fpnew_pkg_snax::fp_format_e'(2),  //FP16 

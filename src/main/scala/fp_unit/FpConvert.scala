@@ -35,7 +35,7 @@ class FpConvertBlackBox(typeA: FpType, typeC: FpType)
 
 }
 
-class FpConvertBlackBoxAlt(typeA: FpType, typeC: FpType)
+class FpConvertBlackBoxToAlt(typeA: FpType, typeC: FpType)
     extends BlackBox(
       Map(
         "FpFormat_in"  -> RawParam(typeA.fpnewFormatEnum),
@@ -59,8 +59,34 @@ class FpConvertBlackBoxAlt(typeA: FpType, typeC: FpType)
   addResource("common_block/fpnew_classifier.sv")
   addResource("common_block/fpnew_rounding.sv")
   addResource("common_block/lzc.sv")
-  addResource("fp_convert_alt.sv")
+  addResource("fp_convert_to_alt.sv")
+}
 
+class FpConvertBlackBoxFromAlt(typeA: FpType, typeC: FpType)
+    extends BlackBox(
+      Map(
+        "FpFormat_in"  -> RawParam(typeA.fpnewFormatEnum),
+        "FpFormat_out" -> RawParam(typeC.fpnewFormatEnum)
+      )
+    )
+    with HasBlackBoxResource {
+
+  require(
+    !typeA.isIEEE754 && typeC.isIEEE754,
+    "only supports IEEE 754 to non-IEEE 754 compliant floating point conversions"
+  )
+
+  val io = IO(new Bundle {
+    val operand_a_i = Input(UInt(typeA.W))
+    val result_o    = Output(UInt(typeC.W))
+  })
+  override def desiredName: String = "fp_convert"
+
+  addResource("common_block/fpnew_pkg_snax.sv")
+  addResource("common_block/fpnew_classifier.sv")
+  addResource("common_block/fpnew_rounding.sv")
+  addResource("common_block/lzc.sv")
+  addResource("fp_convert_from_alt.sv")
 }
 
 class FpConvert(val typeA: FpType, val typeC: FpType) extends Module with RequireAsyncReset {
@@ -77,7 +103,11 @@ class FpConvert(val typeA: FpType, val typeC: FpType) extends Module with Requir
     sv_module.io.operand_a_i := io.in_a
     io.out                   := sv_module.io.result_o
   } else if (typeA.isIEEE754 && !typeC.isIEEE754) {
-    val sv_module = Module(new FpConvertBlackBoxAlt(typeA, typeC))
+    val sv_module = Module(new FpConvertBlackBoxToAlt(typeA, typeC))
+    sv_module.io.operand_a_i := io.in_a
+    io.out                   := sv_module.io.result_o
+  } else if (!typeA.isIEEE754 && typeC.isIEEE754) {
+    val sv_module = Module(new FpConvertBlackBoxFromAlt(typeA, typeC))
     sv_module.io.operand_a_i := io.in_a
     io.out                   := sv_module.io.result_o
   } else {
