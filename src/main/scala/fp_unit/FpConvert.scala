@@ -53,7 +53,7 @@ class FpConvertBlackBoxToAlt(typeA: FpType, typeC: FpType)
     val operand_a_i = Input(UInt(typeA.W))
     val result_o    = Output(UInt(typeC.W))
   })
-  override def desiredName: String = "fp_convert"
+  override def desiredName: String = "fp_convert_to_alt"
 
   addResource("common_block/fpnew_pkg_snax.sv")
   addResource("common_block/fpnew_classifier.sv")
@@ -80,7 +80,7 @@ class FpConvertBlackBoxFromAlt(typeA: FpType, typeC: FpType)
     val operand_a_i = Input(UInt(typeA.W))
     val result_o    = Output(UInt(typeC.W))
   })
-  override def desiredName: String = "fp_convert"
+  override def desiredName: String = "fp_convert_from_alt"
 
   addResource("common_block/fpnew_pkg_snax.sv")
   addResource("common_block/fpnew_classifier.sv")

@@ -9,7 +9,7 @@
 
 
 // For now, this is implemented as a multiplication with constant 1 (exp=BIAS_IN, mantissa=1).
-module fp_convert #(
+module fp_convert_from_alt #(
     parameter fpnew_pkg_snax::fp_format_e FpFormat_in  = fpnew_pkg_snax::fp_format_e'(2),  //FP16 
     parameter fpnew_pkg_snax::fp_format_e FpFormat_out = fpnew_pkg_snax::fp_format_e'(0),  //FP32
 
