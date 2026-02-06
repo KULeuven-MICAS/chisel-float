@@ -313,6 +313,8 @@ trait FpUtils {
   /** Multiplies two floating point numbers in a given format by introducing the hardware limitations of this format */
   def fpOperationHardware(a: Float, typeA: FpType, op: Float => Float) = op(quantize(typeA, a))
 
+  def fpSqrtHardware(a: Float, typeA: FpType): Float = fpOperationHardware(a, typeA, (x: Float) => Math.sqrt(x).toFloat)
+
   def isNaN(bits: BigInt, fpType: FpType): Boolean = {
     val expMask = ((BigInt(1) << fpType.expWidth) - 1) << fpType.sigWidth
     val exp     = (bits & expMask) >> fpType.sigWidth
@@ -340,6 +342,7 @@ trait FpUtils {
     def *(b: (Float, FpType)): Float = fpOperationHardware(a._1, b._1, a._2, b._2, _ * _)
     def +(b: (Float, FpType)): Float = fpOperationHardware(a._1, b._1, a._2, b._2, _ + _)
     def -(b: (Float, FpType)): Float = fpOperationHardware(a._1, b._1, a._2, b._2, _ - _)
+    def /(b: (Float, FpType)): Float = fpOperationHardware(a._1, b._1, a._2, b._2, _ / _)
 
     /** Not to be confused with the Chisel3 === operator */
     def ===(b: UInt): Boolean = fpEqualsHardware(a._1, b, a._2, lsbTolerance = 0)
