@@ -13,25 +13,25 @@ import chiseltest.simulator.VerilatorBackendAnnotation
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
-class FpDivSqrtMvpTest extends AnyFlatSpec with Matchers with ChiselScalatestTester with FpUtils {
-  behavior of "FpDivSqrtMvp"
+class FpDivSqrtTest extends AnyFlatSpec with Matchers with ChiselScalatestTester with FpUtils {
+  behavior of "FpDivSqrt"
 
   // Note: this unit is iterative and uses a BlackBox; keep test count reasonable.
   val test_num           = 1000
   val maxLatencyCycles   = 300
   val maxReadyWaitCycles = 50
 
-  private def stepUntil(dut: FpDivSqrtMvp, maxCycles: Int, what: String)(pred: => Boolean): Unit = {
+  private def stepUntil(dut: FpDivSqrt, maxCycles: Int)(pred: => Boolean): Unit = {
     var cycles = 0
     while (!pred && cycles < maxCycles) {
       dut.clock.step(1)
       cycles += 1
     }
-    withClue(s"Timeout while waiting for $what after $maxCycles cycles") { pred shouldBe true }
+    pred shouldBe true
   }
 
   /** Issue one div/sqrt request (both inputs in same cycle) and return the output bits when valid. */
-  private def issueAndGetResult(dut: FpDivSqrtMvp, modeSqrt: Boolean, a: Float, b: Float): UInt = {
+  private def issueAndGetResult(dut: FpDivSqrt, modeSqrt: Boolean, a: Float, b: Float): UInt = {
     val fpType = BF16
 
     dut.io.mode.poke(modeSqrt.B)
@@ -43,9 +43,7 @@ class FpDivSqrtMvpTest extends AnyFlatSpec with Matchers with ChiselScalatestTes
     dut.io.in_b.bits.poke(floatToUInt(fpType, b).U)
 
     // Wait until the unit is ready to accept the request. Keep valids asserted until accepted.
-    stepUntil(dut, maxReadyWaitCycles, "in_a.ready && in_b.ready") {
-      dut.io.in_a.ready.peekBoolean() && dut.io.in_b.ready.peekBoolean()
-    }
+    stepUntil(dut, maxReadyWaitCycles) { dut.io.in_a.ready.peekBoolean() && dut.io.in_b.ready.peekBoolean() }
 
     // Fire happens in the current cycle (valids are high). Step once to register the start.
     dut.clock.step(1)
@@ -53,7 +51,7 @@ class FpDivSqrtMvpTest extends AnyFlatSpec with Matchers with ChiselScalatestTes
     dut.io.in_b.valid.poke(false.B)
 
     // Wait for the result.
-    stepUntil(dut, maxLatencyCycles, "out.valid") { dut.io.out.valid.peekBoolean() }
+    stepUntil(dut, maxLatencyCycles) { dut.io.out.valid.peekBoolean() }
     val result = dut.io.out.bits.peek()
 
     // Consume/clear for next iteration (out.ready is already high).
@@ -61,7 +59,7 @@ class FpDivSqrtMvpTest extends AnyFlatSpec with Matchers with ChiselScalatestTes
     result
   }
 
-  private def testSingleDiv(dut: FpDivSqrtMvp, test_id: Int, a: Float, b: Float): Unit = {
+  private def testSingleDiv(dut: FpDivSqrt, test_id: Int, a: Float, b: Float): Unit = {
     val fpType = BF16
 
     val expected      = (a, fpType) / (b, fpType)
@@ -81,7 +79,7 @@ class FpDivSqrtMvpTest extends AnyFlatSpec with Matchers with ChiselScalatestTes
     ) { (expected_fp, fpType) =~= result shouldBe true }
   }
 
-  private def testSingleSqrt(dut: FpDivSqrtMvp, test_id: Int, a: Float): Unit = {
+  private def testSingleSqrt(dut: FpDivSqrt, test_id: Int, a: Float): Unit = {
     val fpType = BF16
 
     // Reference (FpUtils) + normalize -0.0f to +0.0f for stability.
@@ -102,7 +100,7 @@ class FpDivSqrtMvpTest extends AnyFlatSpec with Matchers with ChiselScalatestTes
     ) { (expected_fp, fpType) =~= result shouldBe true }
   }
 
-  private def testAllDiv(dut: FpDivSqrtMvp): Unit = {
+  private def testAllDiv(dut: FpDivSqrt): Unit = {
     val fpType    = BF16
     val testCases =
       Seq.fill(test_num)((genRandomValue(fpType), genRandomValue(fpType))) ++
@@ -111,7 +109,7 @@ class FpDivSqrtMvpTest extends AnyFlatSpec with Matchers with ChiselScalatestTes
     testCases.zipWithIndex.foreach { case ((a, b), index) => testSingleDiv(dut, index + 1, a, b) }
   }
 
-  private def testAllSqrt(dut: FpDivSqrtMvp): Unit = {
+  private def testAllSqrt(dut: FpDivSqrt): Unit = {
     val fpType    = BF16
     val testCases =
       Seq.fill(test_num)(genRandomValue(fpType)) ++
@@ -120,7 +118,7 @@ class FpDivSqrtMvpTest extends AnyFlatSpec with Matchers with ChiselScalatestTes
     testCases.zipWithIndex.foreach { case (a, index) => testSingleSqrt(dut, index + 1, a) }
   }
 
-  private def testDivSpecialCases(dut: FpDivSqrtMvp): Unit = {
+  private def testDivSpecialCases(dut: FpDivSqrt): Unit = {
     val specialCases = Seq(
       (0.0f, 1.0f),
       (1.0f, 0.0f),
@@ -142,7 +140,7 @@ class FpDivSqrtMvpTest extends AnyFlatSpec with Matchers with ChiselScalatestTes
     specialCases.zipWithIndex.foreach { case ((a, b), index) => testSingleDiv(dut, index + 1, a, b) }
   }
 
-  private def testSqrtSpecialCases(dut: FpDivSqrtMvp): Unit = {
+  private def testSqrtSpecialCases(dut: FpDivSqrt): Unit = {
     val specialCases = Seq(
       0.0f,
       -0.0f,
@@ -159,22 +157,22 @@ class FpDivSqrtMvpTest extends AnyFlatSpec with Matchers with ChiselScalatestTes
   }
 
   it should "perform BF16 division correctly (random)" in {
-    test(new FpDivSqrtMvp())
+    test(new FpDivSqrt())
       .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testAllDiv(dut) }
   }
 
   it should "perform BF16 sqrt correctly (random)" in {
-    test(new FpDivSqrtMvp())
+    test(new FpDivSqrt())
       .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testAllSqrt(dut) }
   }
 
   it should "handle BF16 division special cases" in {
-    test(new FpDivSqrtMvp())
+    test(new FpDivSqrt())
       .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testDivSpecialCases(dut) }
   }
 
   it should "handle BF16 sqrt special cases" in {
-    test(new FpDivSqrtMvp())
+    test(new FpDivSqrt())
       .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testSqrtSpecialCases(dut) }
   }
 }

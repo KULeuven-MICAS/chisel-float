@@ -11,7 +11,7 @@ import chisel3._
 import chisel3.util._
 
 /** BlackBox for div_sqrt_mvp_wrapper.sv; hardwired to BF16 (16-bit) operands and result. */
-class DivSqrtMvpBlackBox extends BlackBox with HasBlackBoxResource {
+class DivSqrtBlackBox extends BlackBox with HasBlackBoxResource {
 
   val fpType = BF16
 
@@ -40,13 +40,11 @@ class DivSqrtMvpBlackBox extends BlackBox with HasBlackBoxResource {
   addResource("common_block/lzc.sv")
 }
 
-/** Wrapper for the div_sqrt_mvp_wrapper BlackBox with decoupled IO and a simple FSM.
-  *   - Accepts one request via io.in (operands + div_start or sqrt_start); when in.fire, starts the unit.
-  *   - Presents result on io.out when done; consumer uses out.ready to back-pressure.
-  */
-class FpDivSqrtMvp extends Module with RequireAsyncReset {
+class FpDivSqrt extends Module with RequireAsyncReset {
 
-  val fpType = BF16
+  val fpType             = BF16
+  // The SV unit doesn't update its `Ready_SO` immediately after starting
+  val START_GRACE_CYCLES = 1
 
   val io = IO(new Bundle {
     val in_a = Flipped(Decoupled(UInt(fpType.W)))
@@ -55,21 +53,27 @@ class FpDivSqrtMvp extends Module with RequireAsyncReset {
     val out  = Decoupled(UInt(fpType.W))
   })
 
-  val sv_module = Module(new DivSqrtMvpBlackBox())
+  val sv_module = Module(new DivSqrtBlackBox())
   sv_module.io.Clk_CI  := clock
   sv_module.io.Rst_RBI := !reset.asBool
+  val isSqrt = io.mode === 1.B
 
   // Accept only when SV unit is ready and we can accept a new request (no unconsumed result).
   // Assert ready only when the other operand is valid so both transfer in the same cycle
-  val canAccept = sv_module.io.Ready_SO && (!io.out.valid || io.out.ready)
-  io.in_a.ready := canAccept && io.in_b.valid
-  io.in_b.ready := canAccept && io.in_a.valid
-  val fire = io.in_a.fire && io.in_b.fire
+  val fire          = io.in_a.fire && (io.in_b.fire || isSqrt)
+  val fireDelayed   = Seq.tabulate(START_GRACE_CYCLES)(i => ShiftRegister(fire, i + 1))
+  val inGracePeriod = fireDelayed.reduce(_ || _)
+
+  val canAccept = sv_module.io.Ready_SO && (!io.out.valid || io.out.ready) && !sv_module.io.Done_SO && !inGracePeriod
+  val allValid  = io.in_a.valid         && (io.in_b.valid || isSqrt)
+
+  io.in_a.ready := canAccept && (!io.in_a.valid || allValid)
+  io.in_b.ready := canAccept && (!io.in_b.valid || allValid) && !isSqrt
 
   sv_module.io.Operand_a_DI  := io.in_a.bits
   sv_module.io.Operand_b_DI  := io.in_b.bits
-  sv_module.io.Div_start_SI  := fire && io.mode === 0.B
-  sv_module.io.Sqrt_start_SI := fire && io.mode === 1.B
+  sv_module.io.Div_start_SI  := fire && !isSqrt
+  sv_module.io.Sqrt_start_SI := fire && isSqrt
 
   val out_reg      = RegEnable(sv_module.io.Result_DO, sv_module.io.Done_SO)
   val outValid_reg = RegInit(false.B)
@@ -84,9 +88,6 @@ class FpDivSqrtMvp extends Module with RequireAsyncReset {
 
 }
 
-object FpDivSqrtMvpEmitter extends App {
-  chisel3.emitVerilog(
-    new FpDivSqrtMvp(),
-    Array("--target-dir", "generated/fp_unit")
-  )
+object FpDivSqrtEmitter extends App {
+  chisel3.emitVerilog(new FpDivSqrt(), Array("--target-dir", "generated/fp_unit"))
 }
