@@ -27,7 +27,7 @@ class DivSqrtBlackBox extends BlackBox with HasBlackBoxResource {
     val Done_SO       = Output(Bool())
   })
 
-  override def desiredName: String = "div_sqrt_mvp_wrapper"
+  override def desiredName: String = "div_sqrt_mvp_wrapper_snax"
 
   addResource("sqrt_div/defs_div_sqrt_mvp.sv")
   addResource("sqrt_div/control_mvp.sv")

@@ -11,7 +11,7 @@
 // This file contains all div_sqrt_top_mvp parameters
 // Authors    : Lei Li  (lile@iis.ee.ethz.ch)
 
-package defs_div_sqrt_mvp;
+package defs_div_sqrt_mvp_snax;
 
    // op command
    localparam C_RM                  = 3;
@@ -80,4 +80,4 @@ package defs_div_sqrt_mvp;
    localparam C_MANT_ZERO_FP16ALT    = 7'h0;
    localparam C_QNAN_FP16ALT         = 16'h7FC0;
 
-endpackage : defs_div_sqrt_mvp
+endpackage : defs_div_sqrt_mvp_snax

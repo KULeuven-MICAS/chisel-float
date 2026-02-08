@@ -36,9 +36,9 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-import defs_div_sqrt_mvp::*;
+import defs_div_sqrt_mvp_snax::*;
 
-module div_sqrt_mvp_wrapper
+module div_sqrt_mvp_wrapper_snax
 #(
    parameter   PrePipeline_depth_S             =        0,  // If you want to add a flip/flop stage before preprocess, set it to 1.
    parameter   PostPipeline_depth_S            =        0  // The output delay stages
@@ -86,7 +86,7 @@ module div_sqrt_mvp_wrapper
     if(PrePipeline_depth_S==1)
       begin
 
-         div_sqrt_top_mvp  div_top_U0  //for RTL
+         div_sqrt_top_mvp_snax  div_top_U0  //for RTL
 
           (//Input
            .Clk_CI                 (Clk_CI),
@@ -132,7 +132,7 @@ module div_sqrt_mvp_wrapper
 
      else
       begin
-          div_sqrt_top_mvp  div_top_U0  //for RTL
+          div_sqrt_top_mvp_snax  div_top_U0  //for RTL
           (//Input
            .Clk_CI                 (Clk_CI),
            .Rst_RBI                (Rst_RBI),

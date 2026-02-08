@@ -30,35 +30,6 @@ class FpDivSqrtTest extends AnyFlatSpec with Matchers with ChiselScalatestTester
     pred shouldBe true
   }
 
-  /** Issue one div/sqrt request (both inputs in same cycle) and return the output bits when valid. */
-  private def issueAndGetResult(dut: FpDivSqrt, modeSqrt: Boolean, a: Float, b: Float): UInt = {
-    val fpType = BF16
-
-    dut.io.mode.poke(modeSqrt.B)
-    dut.io.out.ready.poke(true.B)
-
-    dut.io.in_a.valid.poke(true.B)
-    dut.io.in_b.valid.poke(true.B)
-    dut.io.in_a.bits.poke(floatToUInt(fpType, a).U)
-    dut.io.in_b.bits.poke(floatToUInt(fpType, b).U)
-
-    // Wait until the unit is ready to accept the request. Keep valids asserted until accepted.
-    stepUntil(dut, maxReadyWaitCycles) { dut.io.in_a.ready.peekBoolean() && dut.io.in_b.ready.peekBoolean() }
-
-    // Fire happens in the current cycle (valids are high). Step once to register the start.
-    dut.clock.step(1)
-    dut.io.in_a.valid.poke(false.B)
-    dut.io.in_b.valid.poke(false.B)
-
-    // Wait for the result.
-    stepUntil(dut, maxLatencyCycles) { dut.io.out.valid.peekBoolean() }
-    val result = dut.io.out.bits.peek()
-
-    // Consume/clear for next iteration (out.ready is already high).
-    dut.clock.step(1)
-    result
-  }
-
   private def testSingleDiv(dut: FpDivSqrt, test_id: Int, a: Float, b: Float): Unit = {
     val fpType = BF16
 
@@ -66,13 +37,24 @@ class FpDivSqrtTest extends AnyFlatSpec with Matchers with ChiselScalatestTester
     val expected_uint = floatToUInt(fpType, expected)
     val expected_fp   = quantize(fpType, expected)
 
-    val result    = issueAndGetResult(dut, modeSqrt = false, a = a, b = b)
+    // Issue div request (both operands in same cycle).
+    dut.io.mode.poke(false.B)
+    dut.io.out.ready.poke(true.B)
+    dut.io.in_a.valid.poke(true.B)
+    dut.io.in_b.valid.poke(true.B)
+    dut.io.in_a.bits.poke(floatToUInt(fpType, a).U)
+    dut.io.in_b.bits.poke(floatToUInt(fpType, b).U)
+    stepUntil(dut, maxReadyWaitCycles) { dut.io.in_a.ready.peekBoolean() && dut.io.in_b.ready.peekBoolean() }
+    dut.clock.step(1)
+    dut.io.in_a.valid.poke(false.B)
+    dut.io.in_b.valid.poke(false.B)
+    stepUntil(dut, maxLatencyCycles) { dut.io.out.valid.peekBoolean() }
+    val result = dut.io.out.bits.peek()
+    dut.clock.step(1)
+
     val result_fp = uintToFloat(fpType, result)
-
-    // Debugging
-    val a_fp = quantize(fpType, a)
-    val b_fp = quantize(fpType, b)
-
+    val a_fp      = quantize(fpType, a)
+    val b_fp      = quantize(fpType, b)
     withClue(
       s"❌[Div Test $test_id] $a_fp / $b_fp = $expected_fp (expected) != $result_fp (got)\n" +
         s"(expected) ${uintToStr(expected_uint, fpType)} (got) ${uintToStr(result.litValue, fpType)}"
@@ -89,11 +71,20 @@ class FpDivSqrtTest extends AnyFlatSpec with Matchers with ChiselScalatestTester
     val expected_uint = floatToUInt(fpType, expected)
     val expected_fp   = quantize(fpType, expected)
 
-    // Operand_b is ignored in sqrt mode by the underlying unit; drive something benign.
-    val result    = issueAndGetResult(dut, modeSqrt = true, a = a, b = 1.0f)
-    val result_fp = uintToFloat(fpType, result)
+    // Issue sqrt request (only operand A; sqrt has no operand B).
+    dut.io.mode.poke(true.B)
+    dut.io.out.ready.poke(true.B)
+    dut.io.in_a.valid.poke(true.B)
+    dut.io.in_a.bits.poke(floatToUInt(fpType, a).U)
+    stepUntil(dut, maxReadyWaitCycles) { dut.io.in_a.ready.peekBoolean() }
+    dut.clock.step(1)
+    dut.io.in_a.valid.poke(false.B)
+    stepUntil(dut, maxLatencyCycles) { dut.io.out.valid.peekBoolean() }
+    val result = dut.io.out.bits.peek()
+    dut.clock.step(1)
 
-    val a_fp = quantize(fpType, a)
+    val result_fp = uintToFloat(fpType, result)
+    val a_fp      = quantize(fpType, a)
     withClue(
       s"❌[Sqrt Test $test_id] sqrt($a_fp) = $expected_fp (expected) != $result_fp (got)\n" +
         s"(expected) ${uintToStr(expected_uint, fpType)} (got) ${uintToStr(result.litValue, fpType)}"

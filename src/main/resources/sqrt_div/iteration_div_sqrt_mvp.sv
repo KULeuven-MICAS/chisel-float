@@ -29,7 +29,7 @@
 //                  For div_sqrt_mvp                                          //
 ////////////////////////////////////////////////////////////////////////////////
 
-module iteration_div_sqrt_mvp
+module iteration_div_sqrt_mvp_snax
 #(
    parameter   WIDTH=25
 )

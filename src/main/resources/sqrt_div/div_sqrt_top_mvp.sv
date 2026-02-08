@@ -32,9 +32,9 @@
 //                 control for special cases                                  //
 ////////////////////////////////////////////////////////////////////////////////
 
-import defs_div_sqrt_mvp::*;
+import defs_div_sqrt_mvp_snax::*;
 
-module div_sqrt_top_mvp
+module div_sqrt_top_mvp_snax
 
   (//Input
    input logic                            Clk_CI,
@@ -90,7 +90,7 @@ module div_sqrt_top_mvp
 
 
 
- preprocess_mvp  preprocess_U0
+ preprocess_mvp_snax  preprocess_U0
  (
    .Clk_CI                (Clk_CI             ),
    .Rst_RBI               (Rst_RBI            ),
@@ -118,7 +118,7 @@ module div_sqrt_top_mvp
    .Special_case_dly_SBO  (Special_case_dly_SB)
    );
 
- nrbd_nrsc_mvp   nrbd_nrsc_U0
+ nrbd_nrsc_mvp_snax   nrbd_nrsc_U0
   (
    .Clk_CI                (Clk_CI             ),
    .Rst_RBI               (Rst_RBI            ),
@@ -143,7 +143,7 @@ module div_sqrt_top_mvp
     );
 
 
- norm_div_sqrt_mvp  fpu_norm_U0
+ norm_div_sqrt_mvp_snax  fpu_norm_U0
   (
    .Mant_in_DI            (Mant_z_D           ),
    .Exp_in_DI             (Exp_z_D            ),

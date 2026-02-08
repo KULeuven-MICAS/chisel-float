@@ -32,9 +32,9 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-import defs_div_sqrt_mvp::*;
+import defs_div_sqrt_mvp_snax::*;
 
-module preprocess_mvp
+module preprocess_mvp_snax
   (
    input logic                   Clk_CI,
    input logic                   Rst_RBI,

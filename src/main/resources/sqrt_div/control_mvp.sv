@@ -38,9 +38,9 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-import defs_div_sqrt_mvp::*;
+import defs_div_sqrt_mvp_snax::*;
 
-module control_mvp
+module control_mvp_snax
 
   (//Input
    input logic                                        Clk_CI,
@@ -2315,7 +2315,7 @@ module control_mvp
           assign  Div_enable_SI[i] = Div_enable_SO;
           assign  Div_start_dly_SI[i] = Div_start_dly_S;
           assign  Sqrt_enable_SI[i] = Sqrt_enable_SO;
-          iteration_div_sqrt_mvp #(C_MANT_FP64+6) iteration_div_sqrt
+          iteration_div_sqrt_mvp_snax #(C_MANT_FP64+6) iteration_div_sqrt
           (
           .A_DI                                    (Iteration_cell_a_D[i]            ),
           .B_DI                                    (Iteration_cell_b_D[i]            ),

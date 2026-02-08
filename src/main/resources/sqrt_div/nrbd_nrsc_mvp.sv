@@ -31,9 +31,9 @@
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-import defs_div_sqrt_mvp::*;
+import defs_div_sqrt_mvp_snax::*;
 
-module nrbd_nrsc_mvp
+module nrbd_nrsc_mvp_snax
 
   (//Input
    input logic                                 Clk_CI,
@@ -64,7 +64,7 @@ module nrbd_nrsc_mvp
     logic                                     Div_start_dly_S,Sqrt_start_dly_S;
 
 
-control_mvp         control_U0
+control_mvp_snax         control_U0
 (  .Clk_CI                                   (Clk_CI                          ),
    .Rst_RBI                                  (Rst_RBI                         ),
    .Div_start_SI                             (Div_start_SI                    ),
