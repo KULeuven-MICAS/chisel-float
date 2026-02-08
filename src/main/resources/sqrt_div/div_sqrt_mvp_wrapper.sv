@@ -50,11 +50,11 @@ module div_sqrt_mvp_wrapper_snax
    input logic                            Sqrt_start_SI,
 
    //Input Operands
-   input logic [C_OP_FP64-1:0]            Operand_a_DI,
-   input logic [C_OP_FP64-1:0]            Operand_b_DI,
+   input logic [C_OP_FP16ALT-1:0]            Operand_a_DI,
+   input logic [C_OP_FP16ALT-1:0]            Operand_b_DI,
 
    //Output Result
-   output logic [C_OP_FP64-1:0]           Result_DO,
+   output logic [C_OP_FP16ALT-1:0]           Result_DO,
 
    output logic                           Ready_SO,
    output logic                           Done_SO
@@ -67,8 +67,8 @@ module div_sqrt_mvp_wrapper_snax
 
 
    logic                                 Div_start_S_S,Sqrt_start_S_S;
-   logic [C_OP_FP64-1:0]                 Operand_a_S_D;
-   logic [C_OP_FP64-1:0]                 Operand_b_S_D;
+   logic [C_OP_FP16ALT-1:0]                 Operand_a_S_D;
+   logic [C_OP_FP16ALT-1:0]                 Operand_b_S_D;
 
    // Input Control
    logic [C_RM-1:0]                      RM_S_S;    //Rounding Mode
@@ -76,7 +76,7 @@ module div_sqrt_mvp_wrapper_snax
    logic                                 Kill_S_S;
 
 
-  logic [C_OP_FP64-1:0]                  Result_D;
+  logic [C_OP_FP16ALT-1:0]                  Result_D;
   logic                                  Ready_S;
   logic                                  Done_S;
   logic [4:0]                            Fflags_S;  // consumed by div_sqrt_top_mvp, not exposed
@@ -155,7 +155,7 @@ module div_sqrt_mvp_wrapper_snax
    /////////////////////////////////////////////////////////////////////////////
    // First Stage of Outputs
    /////////////////////////////////////////////////////////////////////////////
-  logic [C_OP_FP64-1:0]         Result_dly_S_D;
+  logic [C_OP_FP16ALT-1:0]         Result_dly_S_D;
   logic                         Ready_dly_S_S;
   logic                         Done_dly_S_S;
    always_ff @(posedge Clk_CI, negedge Rst_RBI)
@@ -178,7 +178,7 @@ module div_sqrt_mvp_wrapper_snax
    // Second Stage of Outputs
    /////////////////////////////////////////////////////////////////////////////
 
-  logic [C_OP_FP64-1:0]         Result_dly_D_D;
+  logic [C_OP_FP16ALT-1:0]         Result_dly_D_D;
   logic                         Ready_dly_D_S;
   logic                         Done_dly_D_S;
   generate

@@ -42,8 +42,8 @@ module preprocess_mvp_snax
    input logic                   Sqrt_start_SI,
    input logic                   Ready_SI,
    //Input Operands
-   input logic [C_OP_FP64-1:0]   Operand_a_DI,
-   input logic [C_OP_FP64-1:0]   Operand_b_DI,
+   input logic [C_OP_FP16ALT-1:0]   Operand_a_DI,
+   input logic [C_OP_FP16ALT-1:0]   Operand_b_DI,
    input logic [C_RM-1:0]        RM_SI,    //Rounding Mode
 
    // to control
