@@ -81,8 +81,9 @@ trait FpUtils {
         sign << expSigWidth
 
       } else if (tentativeExp > maxExpTarget) {
-        // Overflow -> Inf (all 1's)
-        (sign << expSigWidth) | ((1 << expSigWidth) - 1)
+        // Overflow -> Inf (all exponent bits 1, fraction 0)
+        val expAllOnes = (1 << expWidth) - 1
+        (sign << expSigWidth) | (expAllOnes << sigWidth)
 
       } else if (exponent == 0 && tentativeExp <= 0) {
         // From subnormal to subnormal
@@ -179,7 +180,7 @@ trait FpUtils {
         val shift                = 23 - sigWidth
         val (roundedFrac, carry) = round(frac, shift, sigWidth)
         val expFinal             = if (carry) tentativeExp + 1 else tentativeExp
-        if (expFinal >= maxExpTarget) {
+        if (expFinal > maxExpTarget) {
           // Overflow -> max value
           (sign << expSigWidth) | (maxExpTarget << sigWidth) | ((1 << sigWidth) - 1)
         } else {

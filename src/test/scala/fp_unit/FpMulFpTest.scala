@@ -73,10 +73,54 @@ class FpMulFpTest extends AnyFlatSpec with Matchers with ChiselScalatestTester w
     specialCases.zipWithIndex.foreach { case ((a, b), index) => testSingle(dut, index + 1, a, b) }
   }
 
+  /** TODO why do we have this */
+  def testAltToAltNonCompliantEdges(dut: FpMulFp) = {
+    // FP8_ALT layout: sign[7], exp[6:2], mantissa[1:0]
+    val expMask      = (BigInt(1) << dut.typeC.expWidth) - 1
+    val mantissaMask = (BigInt(1) << dut.typeC.sigWidth) - 1
+
+    val positiveMax = (expMask << dut.typeC.sigWidth) | mantissaMask
+    val negativeMax = (BigInt(1) << (dut.typeC.width - 1)) | positiveMax
+
+    // Largest positive values should overflow and saturate to largest positive output.
+    dut.io.in_a.poke(positiveMax.U)
+    dut.io.in_b.poke(positiveMax.U)
+    dut.clock.step(1)
+    dut.io.out.peek().litValue shouldBe positiveMax
+
+    // Sign should be preserved when saturation happens.
+    dut.io.in_a.poke(negativeMax.U)
+    dut.io.in_b.poke(positiveMax.U)
+    dut.clock.step(1)
+    dut.io.out.peek().litValue shouldBe negativeMax
+
+    // Smallest non-zero magnitudes should underflow to zero magnitude (sign ignored).
+    val smallestPositive = BigInt(1) // sign=0, exp=0, mantissa=1
+    dut.io.in_a.poke(smallestPositive.U)
+    dut.io.in_b.poke(smallestPositive.U)
+    dut.clock.step(1)
+    val underflowResult  = dut.io.out.peek().litValue
+    (underflowResult & ((expMask << dut.typeC.sigWidth) | mantissaMask)) shouldBe 0
+  }
+
   it should "perform FP8_ALT x FP8_ALT = BF16 correctly" in {
     test(
       new FpMulFp(typeA = FP8_ALT, typeB = FP8_ALT, typeC = BF16)
     ).withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
+  }
+
+  it should "perform FP8_ALT x FP8_ALT = FP8_ALT correctly" in {
+    test(
+      new FpMulFp(typeA = FP8_ALT, typeB = FP8_ALT, typeC = FP8_ALT)
+    ).withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
+  }
+
+  it should "saturate overflow and flush underflow for FP8_ALT x FP8_ALT = FP8_ALT" in {
+    test(
+      new FpMulFp(typeA = FP8_ALT, typeB = FP8_ALT, typeC = FP8_ALT)
+    ).withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut =>
+      testAltToAltNonCompliantEdges(dut)
+    }
   }
 
   it should "perform FP16 x FP16 = FP32 correctly" in {
