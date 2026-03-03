@@ -151,12 +151,12 @@ trait FpUtils {
 
     val bitsTarget =
       if (exponent == 0xff && frac != 0) {
-        // Canonical NaN: all exponent bits 1, MSB of fraction 1, rest 0
-        throw new NotImplementedError("Non-IEEE 754 format cannot represent NaN")
+        // NaN: non-IEEE 754 format has no NaN encoding -> map to zero
+        0
 
       } else if (exponent == 0xff && frac == 0) {
-        // Infinity: all exponent bits 1, fraction 0
-        throw new NotImplementedError("Non-IEEE 754 format cannot represent inf")
+        // Infinity: saturate to max representable value (same as overflow)
+        (sign << expSigWidth) | (maxExpTarget << sigWidth) | ((1 << sigWidth) - 1)
 
       } else if (exponent == 0 && frac == 0) {
         // True zero
