@@ -1,9 +1,8 @@
 // See README.md for license details.
 
-ThisBuild / scalaVersion               := "2.13.14"
-ThisBuild / version                    := "0.1.0"
-ThisBuild / organization               := "MICAS (KU Leuven)"
-ThisBuild / scalafixScalaBinaryVersion := "2.13"
+ThisBuild / scalaVersion := "2.13.14"
+ThisBuild / version      := "0.1.0"
+ThisBuild / organization := "MICAS (KU Leuven)"
 
 Test / parallelExecution := true
 Test / fork              := true
