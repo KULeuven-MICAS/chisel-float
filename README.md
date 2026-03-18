@@ -13,6 +13,7 @@ Floating point units (add, mul, FMA) for transprecision computing in arbitrary F
 - Maintainer: [Robin Geens](mailto:robin.geens@kuleuven.be)
 
 
+
 ## Features ✨
 
 - Modules
@@ -39,3 +40,14 @@ Floating point units (add, mul, FMA) for transprecision computing in arbitrary F
 - `src/main/resources/` — Verilog source code
 
 
+## How to cite
+
+BibTeX:
+```bibtex
+@misc{hisel_float,
+  title = {chisel-float: Mixed-precision floating point units, wrapped in Chisel},
+  author = {Geens, Robin},
+  howpublished = {\url{https://github.com/KULeuven-MICAS/chisel-float}},
+  year = {2025},
+}
+```
