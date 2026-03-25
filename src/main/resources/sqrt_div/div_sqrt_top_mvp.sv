@@ -31,9 +31,6 @@
 //                 To address some requirements by Stefan and add low power   //
 //                 control for special cases                                  //
 ////////////////////////////////////////////////////////////////////////////////
-
-import defs_div_sqrt_mvp_snax::*;
-
 module div_sqrt_top_mvp_snax
 
   (//Input
@@ -43,16 +40,16 @@ module div_sqrt_top_mvp_snax
    input logic                            Sqrt_start_SI,
 
    //Input Operands
-   input logic [C_OP_FP16ALT-1:0]            Operand_a_DI,
-   input logic [C_OP_FP16ALT-1:0]            Operand_b_DI,
+   input logic [defs_div_sqrt_mvp_snax::C_OP_FP16ALT-1:0]            Operand_a_DI,
+   input logic [defs_div_sqrt_mvp_snax::C_OP_FP16ALT-1:0]            Operand_b_DI,
 
    // Input Control
-   input logic [C_RM-1:0]                 RM_SI,    //Rounding Mode
-   input logic [C_PC-1:0]                 Precision_ctl_SI, // Precision Control
+   input logic [defs_div_sqrt_mvp_snax::C_RM-1:0]                 RM_SI,    //Rounding Mode
+   input logic [defs_div_sqrt_mvp_snax::C_PC-1:0]                 Precision_ctl_SI, // Precision Control
    input logic                            Kill_SI,
 
    //Output Result
-   output logic [C_OP_FP16ALT-1:0]           Result_DO,
+   output logic [defs_div_sqrt_mvp_snax::C_OP_FP16ALT-1:0]           Result_DO,
 
    //Output-Flags
    output logic [4:0]                     Fflags_SO,
@@ -65,16 +62,16 @@ module div_sqrt_top_mvp_snax
 
 
    //Operand components
-   logic [C_EXP_FP64:0]                 Exp_a_D;
-   logic [C_EXP_FP64:0]                 Exp_b_D;
-   logic [C_MANT_FP64:0]                Mant_a_D;
-   logic [C_MANT_FP64:0]                Mant_b_D;
+   logic [defs_div_sqrt_mvp_snax::C_EXP_FP64:0]                 Exp_a_D;
+   logic [defs_div_sqrt_mvp_snax::C_EXP_FP64:0]                 Exp_b_D;
+   logic [defs_div_sqrt_mvp_snax::C_MANT_FP64:0]                Mant_a_D;
+   logic [defs_div_sqrt_mvp_snax::C_MANT_FP64:0]                Mant_b_D;
 
-   logic [C_EXP_FP64+1:0]               Exp_z_D;
-   logic [C_MANT_FP64+4:0]              Mant_z_D;
+   logic [defs_div_sqrt_mvp_snax::C_EXP_FP64+1:0]               Exp_z_D;
+   logic [defs_div_sqrt_mvp_snax::C_MANT_FP64+4:0]              Mant_z_D;
    logic                                Sign_z_D;
    logic                                Start_S;
-   logic [C_RM-1:0]                     RM_dly_S;
+   logic [defs_div_sqrt_mvp_snax::C_RM-1:0]                     RM_dly_S;
    logic                                Div_enable_S;
    logic                                Sqrt_enable_S;
    logic                                Inf_a_S;

@@ -31,9 +31,6 @@
 //                                                                            //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
-
-import defs_div_sqrt_mvp_snax::*;
-
 module preprocess_mvp_snax
   (
    input logic                   Clk_CI,
@@ -42,18 +39,18 @@ module preprocess_mvp_snax
    input logic                   Sqrt_start_SI,
    input logic                   Ready_SI,
    //Input Operands
-   input logic [C_OP_FP16ALT-1:0]   Operand_a_DI,
-   input logic [C_OP_FP16ALT-1:0]   Operand_b_DI,
-   input logic [C_RM-1:0]        RM_SI,    //Rounding Mode
+   input logic [defs_div_sqrt_mvp_snax::C_OP_FP16ALT-1:0]   Operand_a_DI,
+   input logic [defs_div_sqrt_mvp_snax::C_OP_FP16ALT-1:0]   Operand_b_DI,
+   input logic [defs_div_sqrt_mvp_snax::C_RM-1:0]        RM_SI,    //Rounding Mode
 
    // to control
    output logic                  Start_SO,
-   output logic [C_EXP_FP64:0]   Exp_a_DO_norm,
-   output logic [C_EXP_FP64:0]   Exp_b_DO_norm,
-   output logic [C_MANT_FP64:0]  Mant_a_DO_norm,
-   output logic [C_MANT_FP64:0]  Mant_b_DO_norm,
+   output logic [defs_div_sqrt_mvp_snax::C_EXP_FP64:0]   Exp_a_DO_norm,
+   output logic [defs_div_sqrt_mvp_snax::C_EXP_FP64:0]   Exp_b_DO_norm,
+   output logic [defs_div_sqrt_mvp_snax::C_MANT_FP64:0]  Mant_a_DO_norm,
+   output logic [defs_div_sqrt_mvp_snax::C_MANT_FP64:0]  Mant_b_DO_norm,
 
-   output logic [C_RM-1:0]       RM_dly_SO,
+   output logic [defs_div_sqrt_mvp_snax::C_RM-1:0]       RM_dly_SO,
 
    output logic                  Sign_z_DO,
    output logic                  Inf_a_SO,
@@ -71,12 +68,12 @@ module preprocess_mvp_snax
    logic                         Hb_a_D;
    logic                         Hb_b_D;
 
-   logic [C_EXP_FP64-1:0]        Exp_a_D;
-   logic [C_EXP_FP64-1:0]        Exp_b_D;
-   logic [C_MANT_FP64-1:0]       Mant_a_NonH_D;
-   logic [C_MANT_FP64-1:0]       Mant_b_NonH_D;
-   logic [C_MANT_FP64:0]         Mant_a_D;
-   logic [C_MANT_FP64:0]         Mant_b_D;
+   logic [defs_div_sqrt_mvp_snax::C_EXP_FP64-1:0]        Exp_a_D;
+   logic [defs_div_sqrt_mvp_snax::C_EXP_FP64-1:0]        Exp_b_D;
+   logic [defs_div_sqrt_mvp_snax::C_MANT_FP64-1:0]       Mant_a_NonH_D;
+   logic [defs_div_sqrt_mvp_snax::C_MANT_FP64-1:0]       Mant_b_NonH_D;
+   logic [defs_div_sqrt_mvp_snax::C_MANT_FP64:0]         Mant_a_D;
+   logic [defs_div_sqrt_mvp_snax::C_MANT_FP64:0]         Mant_b_D;
 
    /////////////////////////////////////////////////////////////////////////////
    // Disassemble operands
@@ -86,12 +83,12 @@ module preprocess_mvp_snax
 
      always_comb
        begin
-               Sign_a_D = Operand_a_DI[C_OP_FP16ALT-1];
-               Sign_b_D = Operand_b_DI[C_OP_FP16ALT-1];
-               Exp_a_D  = {3'h0, Operand_a_DI[C_OP_FP16ALT-2:C_MANT_FP16ALT]};
-               Exp_b_D  = {3'h0, Operand_b_DI[C_OP_FP16ALT-2:C_MANT_FP16ALT]};
-               Mant_a_NonH_D = {Operand_a_DI[C_MANT_FP16ALT-1:0],45'h0};
-               Mant_b_NonH_D = {Operand_b_DI[C_MANT_FP16ALT-1:0],45'h0};
+               Sign_a_D = Operand_a_DI[defs_div_sqrt_mvp_snax::C_OP_FP16ALT-1];
+               Sign_b_D = Operand_b_DI[defs_div_sqrt_mvp_snax::C_OP_FP16ALT-1];
+               Exp_a_D  = {3'h0, Operand_a_DI[defs_div_sqrt_mvp_snax::C_OP_FP16ALT-2:defs_div_sqrt_mvp_snax::C_MANT_FP16ALT]};
+               Exp_b_D  = {3'h0, Operand_b_DI[defs_div_sqrt_mvp_snax::C_OP_FP16ALT-2:defs_div_sqrt_mvp_snax::C_MANT_FP16ALT]};
+               Mant_a_NonH_D = {Operand_a_DI[defs_div_sqrt_mvp_snax::C_MANT_FP16ALT-1:0],45'h0};
+               Mant_b_NonH_D = {Operand_b_DI[defs_div_sqrt_mvp_snax::C_MANT_FP16ALT-1:0],45'h0};
        end
 
 
@@ -125,17 +122,17 @@ module preprocess_mvp_snax
    logic               Mant_b_prenorm_QNaN_S;
    logic               Mant_b_prenorm_SNaN_S;
 
-   assign Mant_a_prenorm_QNaN_S=Mant_a_NonH_D[C_MANT_FP64-1]&&(~(|Mant_a_NonH_D[C_MANT_FP64-2:0]));
-   assign Mant_a_prenorm_SNaN_S=(~Mant_a_NonH_D[C_MANT_FP64-1])&&((|Mant_a_NonH_D[C_MANT_FP64-2:0]));
-   assign Mant_b_prenorm_QNaN_S=Mant_b_NonH_D[C_MANT_FP64-1]&&(~(|Mant_b_NonH_D[C_MANT_FP64-2:0]));
-   assign Mant_b_prenorm_SNaN_S=(~Mant_b_NonH_D[C_MANT_FP64-1])&&((|Mant_b_NonH_D[C_MANT_FP64-2:0]));
+   assign Mant_a_prenorm_QNaN_S=Mant_a_NonH_D[defs_div_sqrt_mvp_snax::C_MANT_FP64-1]&&(~(|Mant_a_NonH_D[defs_div_sqrt_mvp_snax::C_MANT_FP64-2:0]));
+   assign Mant_a_prenorm_SNaN_S=(~Mant_a_NonH_D[defs_div_sqrt_mvp_snax::C_MANT_FP64-1])&&((|Mant_a_NonH_D[defs_div_sqrt_mvp_snax::C_MANT_FP64-2:0]));
+   assign Mant_b_prenorm_QNaN_S=Mant_b_NonH_D[defs_div_sqrt_mvp_snax::C_MANT_FP64-1]&&(~(|Mant_b_NonH_D[defs_div_sqrt_mvp_snax::C_MANT_FP64-2:0]));
+   assign Mant_b_prenorm_SNaN_S=(~Mant_b_NonH_D[defs_div_sqrt_mvp_snax::C_MANT_FP64-1])&&((|Mant_b_NonH_D[defs_div_sqrt_mvp_snax::C_MANT_FP64-2:0]));
 
      always_comb
        begin
-               Mant_a_prenorm_zero_S=(Operand_a_DI[C_MANT_FP16ALT-1:0] == C_MANT_ZERO_FP16ALT);
-               Mant_b_prenorm_zero_S=(Operand_b_DI[C_MANT_FP16ALT-1:0] == C_MANT_ZERO_FP16ALT);
-               Exp_a_prenorm_Inf_NaN_S=(Operand_a_DI[C_OP_FP16ALT-2:C_MANT_FP16ALT] == C_EXP_INF_FP16ALT);
-               Exp_b_prenorm_Inf_NaN_S=(Operand_b_DI[C_OP_FP16ALT-2:C_MANT_FP16ALT] == C_EXP_INF_FP16ALT);
+               Mant_a_prenorm_zero_S=(Operand_a_DI[defs_div_sqrt_mvp_snax::C_MANT_FP16ALT-1:0] == defs_div_sqrt_mvp_snax::C_MANT_ZERO_FP16ALT);
+               Mant_b_prenorm_zero_S=(Operand_b_DI[defs_div_sqrt_mvp_snax::C_MANT_FP16ALT-1:0] == defs_div_sqrt_mvp_snax::C_MANT_ZERO_FP16ALT);
+               Exp_a_prenorm_Inf_NaN_S=(Operand_a_DI[defs_div_sqrt_mvp_snax::C_OP_FP16ALT-2:defs_div_sqrt_mvp_snax::C_MANT_FP16ALT] == defs_div_sqrt_mvp_snax::C_EXP_INF_FP16ALT);
+               Exp_b_prenorm_Inf_NaN_S=(Operand_b_DI[defs_div_sqrt_mvp_snax::C_OP_FP16ALT-2:defs_div_sqrt_mvp_snax::C_MANT_FP16ALT] == defs_div_sqrt_mvp_snax::C_EXP_INF_FP16ALT);
 
        end
 
@@ -236,8 +233,8 @@ module preprocess_mvp_snax
          end
     end
 
-   logic [C_RM-1:0]                  RM_DN;
-   logic [C_RM-1:0]                  RM_DP;
+   logic [defs_div_sqrt_mvp_snax::C_RM-1:0]                  RM_DN;
+   logic [defs_div_sqrt_mvp_snax::C_RM-1:0]                  RM_DP;
 
    always_comb
      begin
@@ -264,7 +261,7 @@ module preprocess_mvp_snax
    logic                        Mant_zero_S_a,Mant_zero_S_b;
 
   lzc_snax #(
-    .WIDTH ( C_MANT_FP64+1 ),
+    .WIDTH ( defs_div_sqrt_mvp_snax::C_MANT_FP64+1 ),
     .MODE  ( 1             )
   ) LOD_Ua (
     .in_i    ( Mant_a_D          ),
@@ -272,7 +269,7 @@ module preprocess_mvp_snax
     .empty_o ( Mant_zero_S_a     )
   );
 
-   logic [C_MANT_FP64:0]            Mant_a_norm_DN,Mant_a_norm_DP;
+   logic [defs_div_sqrt_mvp_snax::C_MANT_FP64:0]            Mant_a_norm_DN,Mant_a_norm_DP;
 
    assign  Mant_a_norm_DN = ((Start_S&&Ready_SI))?(Mant_a_D<<(Mant_leadingOne_a)):Mant_a_norm_DP;
 
@@ -288,7 +285,7 @@ module preprocess_mvp_snax
           end
      end
 
-   logic [C_EXP_FP64:0]            Exp_a_norm_DN,Exp_a_norm_DP;
+   logic [defs_div_sqrt_mvp_snax::C_EXP_FP64:0]            Exp_a_norm_DN,Exp_a_norm_DP;
    assign  Exp_a_norm_DN = ((Start_S&&Ready_SI))?(Exp_a_D-Mant_leadingOne_a+(|Mant_leadingOne_a)):Exp_a_norm_DP;  //Covering the process of denormal numbers
 
    always_ff @(posedge Clk_CI, negedge Rst_RBI)
@@ -304,7 +301,7 @@ module preprocess_mvp_snax
      end
 
   lzc_snax #(
-    .WIDTH ( C_MANT_FP64+1 ),
+    .WIDTH ( defs_div_sqrt_mvp_snax::C_MANT_FP64+1 ),
     .MODE  ( 1             )
   ) LOD_Ub (
     .in_i    ( Mant_b_D          ),
@@ -313,7 +310,7 @@ module preprocess_mvp_snax
   );
 
 
-   logic [C_MANT_FP64:0]            Mant_b_norm_DN,Mant_b_norm_DP;
+   logic [defs_div_sqrt_mvp_snax::C_MANT_FP64:0]            Mant_b_norm_DN,Mant_b_norm_DP;
 
    assign  Mant_b_norm_DN = ((Start_S&&Ready_SI))?(Mant_b_D<<(Mant_leadingOne_b)):Mant_b_norm_DP;
 
@@ -329,7 +326,7 @@ module preprocess_mvp_snax
           end
      end
 
-   logic [C_EXP_FP64:0]            Exp_b_norm_DN,Exp_b_norm_DP;
+   logic [defs_div_sqrt_mvp_snax::C_EXP_FP64:0]            Exp_b_norm_DN,Exp_b_norm_DP;
    assign  Exp_b_norm_DN = ((Start_S&&Ready_SI))?(Exp_b_D-Mant_leadingOne_b+(|Mant_leadingOne_b)):Exp_b_norm_DP; //Covering the process of denormal numbers
 
    always_ff @(posedge Clk_CI, negedge Rst_RBI)

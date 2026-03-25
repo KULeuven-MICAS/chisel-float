@@ -35,9 +35,6 @@
 //                                                                            //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
-
-import defs_div_sqrt_mvp_snax::*;
-
 module div_sqrt_mvp_wrapper_snax
 #(
    parameter   PrePipeline_depth_S             =        0,  // If you want to add a flip/flop stage before preprocess, set it to 1.
@@ -50,33 +47,33 @@ module div_sqrt_mvp_wrapper_snax
    input logic                            Sqrt_start_SI,
 
    //Input Operands
-   input logic [C_OP_FP16ALT-1:0]            Operand_a_DI,
-   input logic [C_OP_FP16ALT-1:0]            Operand_b_DI,
+   input logic [defs_div_sqrt_mvp_snax::C_OP_FP16ALT-1:0]            Operand_a_DI,
+   input logic [defs_div_sqrt_mvp_snax::C_OP_FP16ALT-1:0]            Operand_b_DI,
 
    //Output Result
-   output logic [C_OP_FP16ALT-1:0]           Result_DO,
+   output logic [defs_div_sqrt_mvp_snax::C_OP_FP16ALT-1:0]           Result_DO,
 
    output logic                           Ready_SO,
    output logic                           Done_SO
  );
 
     // Hardware constants that used to be inputs
-    logic [C_RM-1:0]                 RM_SI = 2'b00;    //Rounding Mode
-    logic [C_PC-1:0]                 Precision_ctl_SI = 6'h0; // Precision Control // TODO how to set this?
+    logic [defs_div_sqrt_mvp_snax::C_RM-1:0]                 RM_SI = 2'b00;    //Rounding Mode
+    logic [defs_div_sqrt_mvp_snax::C_PC-1:0]                 Precision_ctl_SI = 6'h0; // Precision Control // TODO how to set this?
     logic                            Kill_SI = 0;
 
 
    logic                                 Div_start_S_S,Sqrt_start_S_S;
-   logic [C_OP_FP16ALT-1:0]                 Operand_a_S_D;
-   logic [C_OP_FP16ALT-1:0]                 Operand_b_S_D;
+   logic [defs_div_sqrt_mvp_snax::C_OP_FP16ALT-1:0]                 Operand_a_S_D;
+   logic [defs_div_sqrt_mvp_snax::C_OP_FP16ALT-1:0]                 Operand_b_S_D;
 
    // Input Control
-   logic [C_RM-1:0]                      RM_S_S;    //Rounding Mode
-   logic [C_PC-1:0]                      Precision_ctl_S_S; // Precision Control
+   logic [defs_div_sqrt_mvp_snax::C_RM-1:0]                      RM_S_S;    //Rounding Mode
+   logic [defs_div_sqrt_mvp_snax::C_PC-1:0]                      Precision_ctl_S_S; // Precision Control
    logic                                 Kill_S_S;
 
 
-  logic [C_OP_FP16ALT-1:0]                  Result_D;
+  logic [defs_div_sqrt_mvp_snax::C_OP_FP16ALT-1:0]                  Result_D;
   logic                                  Ready_S;
   logic                                  Done_S;
   logic [4:0]                            Fflags_S;  // consumed by div_sqrt_top_mvp, not exposed
@@ -155,7 +152,7 @@ module div_sqrt_mvp_wrapper_snax
    /////////////////////////////////////////////////////////////////////////////
    // First Stage of Outputs
    /////////////////////////////////////////////////////////////////////////////
-  logic [C_OP_FP16ALT-1:0]         Result_dly_S_D;
+  logic [defs_div_sqrt_mvp_snax::C_OP_FP16ALT-1:0]         Result_dly_S_D;
   logic                         Ready_dly_S_S;
   logic                         Done_dly_S_S;
    always_ff @(posedge Clk_CI, negedge Rst_RBI)
@@ -178,7 +175,7 @@ module div_sqrt_mvp_wrapper_snax
    // Second Stage of Outputs
    /////////////////////////////////////////////////////////////////////////////
 
-  logic [C_OP_FP16ALT-1:0]         Result_dly_D_D;
+  logic [defs_div_sqrt_mvp_snax::C_OP_FP16ALT-1:0]         Result_dly_D_D;
   logic                         Ready_dly_D_S;
   logic                         Done_dly_D_S;
   generate
