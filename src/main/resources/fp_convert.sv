@@ -194,7 +194,10 @@ module fp_convert #(
       // Subnormal result. Exponent is 0
       normalized_exponent = 0;
       // Align mantissa with minimum exponent. Mantissa MSB must not be discarded later: subnormals have no hidden bit
-      product_shifted = product << 1 >> unsigned'(-exponent_product);
+      // exponent_product can still be positive here when a subnormal input has more leading zeros than the exponent
+      // can absorb (lzc > exponent_product); a negated positive value would wrap as an unsigned shift amount.
+      if (exponent_product > 0) product_shifted = (product << 1) << unsigned'(exponent_product);
+      else product_shifted = (product << 1) >> unsigned'(-exponent_product);
     end
   end
 

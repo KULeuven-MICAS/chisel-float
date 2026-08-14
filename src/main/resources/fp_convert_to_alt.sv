@@ -108,8 +108,9 @@ module fp_convert_to_alt #(
   fp_t_out special_result;
   logic    result_is_special;
 
-  // Non-IEEE 754 compliant floating point has no special cases, so we put everything to 0
-  assign special_result = 0;
+  // Non-IEEE 754 compliant floating point has no special encodings: NaN maps to 0, infinity saturates to the
+  // largest representable value (same as overflow).
+  assign special_result = any_operand_nan ? '0 : '{sign: operand_a.sign, exponent: '1, mantissa: '1};
   assign result_is_special = any_operand_nan || any_operand_inf;
 
   // ---------------------------
@@ -217,7 +218,7 @@ module fp_convert_to_alt #(
   logic [EXP_BITS_C+MAN_BITS_C-1:0] rounded_abs;  // absolute value of result after rounding
 
   // Classification before round. RISC-V mandates checking underflow AFTER rounding!
-  assign of_before_round = final_exponent >= 2 ** (EXP_BITS_C) - 1;  // infinity exponent is all ones
+  assign of_before_round = final_exponent >= 2 ** (EXP_BITS_C);
   assign uf_before_round = final_exponent == 0;  // exponent for subnormals capped to 0
 
   // Assemble result before rounding. In case of overflow, the largest normal value is set.
@@ -248,8 +249,12 @@ module fp_convert_to_alt #(
   // Result selection
   // -----------------
   logic [WIDTH_out-1:0] regular_result;
+  logic of_after_rounding;
 
-  assign regular_result    = (of_before_round) ? {pre_round_sign, {(WIDTH_out-1){1'b1}}} : {rounded_sign, rounded_abs};
+  // Rounding up from the all-ones encoding (max value) wraps rounded_abs to 0: saturate instead
+  assign of_after_rounding = (&pre_round_abs) && (rounded_abs == '0);
+  assign regular_result = (of_before_round || of_after_rounding) ? {pre_round_sign, {(WIDTH_out - 1) {1'b1}}} :
+      {rounded_sign, rounded_abs};
   assign result_o = result_is_special ? special_result : regular_result;
 
 

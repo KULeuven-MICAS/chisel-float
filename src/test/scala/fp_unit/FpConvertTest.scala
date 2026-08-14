@@ -9,7 +9,7 @@ package fp_unit
 import chisel3._
 
 import chiseltest._
-import chiseltest.simulator.VerilatorBackendAnnotation
+import chiseltest.simulator.VcsBackendAnnotation
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
@@ -57,112 +57,112 @@ class FpConvertTest extends AnyFlatSpec with Matchers with ChiselScalatestTester
 
   it should "convert BF16 to FP8_ALT correctly" in {
     test(new FpConvert(typeA = BF16, typeC = FP8_ALT))
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testAllConvert(dut) }
+      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAllConvert(dut) }
   }
 
   it should "convert FP8_ALT to BF16 correctly" in {
     test(new FpConvert(typeA = FP8_ALT, typeC = BF16))
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testAllConvert(dut) }
+      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAllConvert(dut) }
   }
 
   it should "convert FP32 to FP32 correctly" in {
     test(new FpConvert(typeA = FP32, typeC = FP32))
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testAllConvert(dut) }
+      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAllConvert(dut) }
   }
 
   it should "convert FP16 to FP16 correctly" in {
     test(new FpConvert(typeA = FP16, typeC = FP16))
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testAllConvert(dut) }
+      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAllConvert(dut) }
   }
 
   it should "convert FP8 to BF16 correctly" in {
     test(new FpConvert(typeA = FP8, typeC = BF16))
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testAllConvert(dut) }
+      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAllConvert(dut) }
   }
   it should "convert FP16 to FP32 correctly" in {
     test(new FpConvert(typeA = FP16, typeC = FP32))
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testAllConvert(dut) }
+      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAllConvert(dut) }
   }
 
   it should "convert FP32 to FP16 correctly" in {
     test(new FpConvert(typeA = FP32, typeC = FP16))
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testAllConvert(dut) }
+      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAllConvert(dut) }
   }
 
   it should "convert BF16 to FP32 correctly" in {
     test(new FpConvert(typeA = BF16, typeC = FP32))
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testAllConvert(dut) }
+      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAllConvert(dut) }
   }
 
   it should "convert BF16 to BF16 correctly" in {
     test(new FpConvert(typeA = BF16, typeC = BF16))
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testAllConvert(dut) }
+      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAllConvert(dut) }
   }
 
   it should "convert FP32 to BF16 correctly" in {
     test(new FpConvert(typeA = FP32, typeC = BF16))
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testAllConvert(dut) }
+      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAllConvert(dut) }
   }
 
   // Special cases
   it should "handle special cases in FP16 to FP32" in {
     test(new FpConvert(typeA = FP16, typeC = FP32))
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testSpecialCases(dut) }
+      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testSpecialCases(dut) }
   }
 
   it should "handle special cases in FP32 to FP16" in {
     test(new FpConvert(typeA = FP32, typeC = FP16))
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testSpecialCases(dut) }
+      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testSpecialCases(dut) }
   }
 
   it should "handle special cases in FP32 to BF16" in {
     test(new FpConvert(typeA = FP32, typeC = BF16))
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testSpecialCases(dut) }
+      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testSpecialCases(dut) }
   }
 
   it should "convert FP8 to FP8 correctly" in {
     test(new FpConvert(typeA = FP8, typeC = FP8))
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testAllConvert(dut) }
+      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAllConvert(dut) }
   }
 
   it should "convert FP8 to FP16 correctly" in {
     test(new FpConvert(typeA = FP8, typeC = FP16))
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testAllConvert(dut) }
+      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAllConvert(dut) }
   }
 
   it should "convert FP8 to FP32 correctly" in {
     test(new FpConvert(typeA = FP8, typeC = FP32))
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testAllConvert(dut) }
+      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAllConvert(dut) }
   }
 
   it should "convert FP16 to FP8 correctly" in {
     test(new FpConvert(typeA = FP16, typeC = FP8))
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testAllConvert(dut) }
+      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAllConvert(dut) }
   }
 
   it should "convert FP32 to FP8 correctly" in {
     test(new FpConvert(typeA = FP32, typeC = FP8))
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testAllConvert(dut) }
+      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAllConvert(dut) }
   }
 
   // Special case tests for FP8
   it should "handle special cases in FP8 to FP16" in {
     test(new FpConvert(typeA = FP8, typeC = FP16))
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testSpecialCases(dut) }
+      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testSpecialCases(dut) }
   }
 
   it should "handle special cases in FP8 to FP32" in {
     test(new FpConvert(typeA = FP8, typeC = FP32))
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testSpecialCases(dut) }
+      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testSpecialCases(dut) }
   }
 
   it should "handle special cases in FP16 to FP8" in {
     test(new FpConvert(typeA = FP16, typeC = FP8))
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testSpecialCases(dut) }
+      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testSpecialCases(dut) }
   }
 
   it should "handle special cases in FP32 to FP8" in {
     test(new FpConvert(typeA = FP32, typeC = FP8))
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testSpecialCases(dut) }
+      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testSpecialCases(dut) }
   }
 }

@@ -12,7 +12,7 @@ import scala.util.Random
 import chisel3._
 
 import chiseltest._
-import chiseltest.simulator.VerilatorBackendAnnotation
+import chiseltest.simulator.VcsBackendAnnotation
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
@@ -69,31 +69,31 @@ class FpMulIntTest extends AnyFlatSpec with Matchers with ChiselScalatestTester 
   }
 
   it should "perform FP16-int4 multiply correctly" in {
-    test(new FpMulInt(typeB = Int4)).withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut =>
+    test(new FpMulInt(typeB = Int4)).withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut =>
       testAll(dut)
     }
   }
 
   it should "perform FP16-int3 multiply correctly" in {
-    test(new FpMulInt(typeB = Int3)).withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut =>
+    test(new FpMulInt(typeB = Int3)).withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut =>
       testAll(dut)
     }
   }
 
   it should "perform FP16-int2 multiply correctly" in {
-    test(new FpMulInt(typeB = Int2)).withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut =>
+    test(new FpMulInt(typeB = Int2)).withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut =>
       testAll(dut)
     }
   }
 
   it should "perform FP16-int1 multiply correctly" in {
-    test(new FpMulInt(typeB = Int1)).withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut =>
+    test(new FpMulInt(typeB = Int1)).withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut =>
       testAll(dut)
     }
   }
 
   it should "handle special cases" in {
-    test(new FpMulInt(typeB = Int3)).withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut =>
+    test(new FpMulInt(typeB = Int3)).withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut =>
       testSpecialCases(dut)
     }
   }

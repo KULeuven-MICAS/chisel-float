@@ -9,7 +9,7 @@ package fp_unit
 import chisel3._
 
 import chiseltest._
-import chiseltest.simulator.VerilatorBackendAnnotation
+import chiseltest.simulator.VcsBackendAnnotation
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
@@ -149,21 +149,21 @@ class FpDivSqrtTest extends AnyFlatSpec with Matchers with ChiselScalatestTester
 
   it should "perform BF16 division correctly (random)" in {
     test(new FpDivSqrt())
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testAllDiv(dut) }
+      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAllDiv(dut) }
   }
 
   it should "perform BF16 sqrt correctly (random)" in {
     test(new FpDivSqrt())
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testAllSqrt(dut) }
+      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAllSqrt(dut) }
   }
 
   it should "handle BF16 division special cases" in {
     test(new FpDivSqrt())
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testDivSpecialCases(dut) }
+      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testDivSpecialCases(dut) }
   }
 
   it should "handle BF16 sqrt special cases" in {
     test(new FpDivSqrt())
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testSqrtSpecialCases(dut) }
+      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testSqrtSpecialCases(dut) }
   }
 }

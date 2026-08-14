@@ -16,117 +16,35 @@ trait FpUtils {
 
   def expBias(expWidth: Int) = (1 << (expWidth - 1)) - 1
 
-  /** Right-shifts the value by given amounts, rounding the result with RNE (round-to-nearest, tie-on-even).
-    * @returns
-    *   (shifted and rounded value, carry out)
+  /** Right-shifts the value by `shift`, rounding with RNE (round-to-nearest, ties-to-even); `shift <= 0` shifts left
+    * (exact).
     */
-  private def round(value: BigInt, shift: Int, targetWidth: Int): (BigInt, Boolean) = {
-    if (shift <= 0) { return (value << -shift, false) }
-
-    val roundPos   = shift - 1
-    val roundBit   = if (value.testBit(roundPos)) 1 else 0
-    val stickyMask = (BigInt(1) << roundPos) - 1
-    val stickyBit  = if ((value & stickyMask) != 0) 1 else 0
-
-    val truncated = value >> shift
-    val lsb       = if (truncated.testBit(0)) 1 else 0
-
-    val roundUp = roundBit == 1 && (stickyBit == 1 || lsb == 1)
-
-    if (roundUp) {
-      val result = truncated + 1
-      // Check for overflow. If the bit at targetWidth is set, it's a carry-out.
-      if (result.testBit(targetWidth)) {
-        (result & ((BigInt(1) << targetWidth) - 1), true)
-      } else {
-        (result, false)
-      }
-    } else {
-      (truncated, false)
+  private def roundRNE(value: BigInt, shift: Int): BigInt =
+    if (shift <= 0) value << -shift
+    else {
+      val kept     = value >> shift
+      val roundBit = value.testBit(shift - 1)
+      val sticky   = (value & ((BigInt(1) << (shift - 1)) - 1)) != 0
+      kept + (if (roundBit && (sticky || kept.testBit(0))) 1 else 0)
     }
-  }
 
-  /** Generalized helper function to encode Float as UInt */
+  /** Generalized helper function to encode Float as UInt. Decomposes the float32 exactly (no rounding).
+    */
   private def floatToUInt(expWidth: Int, sigWidth: Int, value: Float): BigInt = {
-    val expSigWidth = expWidth + sigWidth
-    val totalWidth  = expSigWidth + 1
-
-    // Convert to IEEE 754 32-bit float representation
     val bits32 = java.lang.Float.floatToIntBits(value)
+    val sign   = (bits32 >>> 31) & 0x1
+    val exp32  = (bits32 >>> 23) & 0xff
+    val frac   = BigInt(bits32 & 0x7fffff)
 
-    // Extract sign, exponent, and significand
-    val sign     = (bits32 >>> 31) & 0x1
-    val exponent = (bits32 >>> 23) & 0xff
-    val frac     = BigInt(bits32 & 0x7fffff)
-
-    // Re-normalize the exponent to fit expWidth
-    val biasTarget   = expBias(expWidth)
-    val maxExpTarget = (1 << expWidth) - 1
-    val tentativeExp = (exponent - BIAS32 + biasTarget)
-
-    val bitsTarget =
-      if (exponent == 0xff && frac != 0) {
-        // Canonical NaN: all exponent bits 1, MSB of fraction 1, rest 0
-        val expAllOnes = (1 << expWidth) - 1
-        val fracMSB    = 1 << (sigWidth - 1)
-        (sign << expSigWidth) | (expAllOnes << sigWidth) | fracMSB
-
-      } else if (exponent == 0xff && frac == 0) {
-        // Infinity: all exponent bits 1, fraction 0
-        val expAllOnes = (1 << expWidth) - 1
-        (sign << expSigWidth) | (expAllOnes << sigWidth)
-
-      } else if (exponent == 0 && frac == 0) {
-        // True zero
-        sign << expSigWidth
-
-      } else if (tentativeExp > maxExpTarget) {
-        // Overflow -> Inf (all exponent bits 1, fraction 0)
-        val expAllOnes = (1 << expWidth) - 1
-        (sign << expSigWidth) | (expAllOnes << sigWidth)
-
-      } else if (exponent == 0 && tentativeExp <= 0) {
-        // From subnormal to subnormal
-        val shift                  = -tentativeExp + 23 - sigWidth
-        val (subnormalFrac, carry) = round(frac, shift, sigWidth)
-        if (carry) {
-          // Rounded up to the smallest normal number
-          (sign << expSigWidth) | (1 << sigWidth)
-        } else {
-          (sign << expSigWidth) | subnormalFrac.toLong
-        }
-
-      } else if (exponent == 0 && tentativeExp > 0) {
-        // From subnormal to normal
-        throw new NotImplementedError("From subnormal to normal")
-
-      } else if (exponent > 0 && tentativeExp <= 0) {
-        // From normal to subnormal
-        val mantissa32             = 0x800000 | frac
-        val shift                  = (1 - tentativeExp) + (23 - sigWidth)
-        val (subnormalFrac, carry) = round(mantissa32, shift, sigWidth)
-        if (carry) {
-          // Rounded up to the smallest normal number
-          (sign << expSigWidth) | (1 << sigWidth)
-        } else {
-          (sign << expSigWidth) | subnormalFrac.toLong
-        }
-
-      } else {
-        // Normal to normal
-        val shift                = 23 - sigWidth
-        val (roundedFrac, carry) = round(frac, shift, sigWidth)
-        val expFinal             = if (carry) tentativeExp + 1 else tentativeExp
-        if (expFinal >= maxExpTarget) {
-          // Overflow to infinity
-          val expAllOnes = (1 << expWidth) - 1
-          (sign << expSigWidth) | (expAllOnes << sigWidth)
-        } else {
-          (sign << expSigWidth) | (expFinal << sigWidth) | roundedFrac.toLong
-        }
-      }
-
-    BigInt(bitsTarget & ((1L << totalWidth) - 1)) // Mask to ensure valid bit-width
+    if (exp32 == 0xff) {
+      // NaN -> canonical NaN (sign preserved); Infinity -> Infinity
+      val fracBits = if (frac != 0) BigInt(1) << (sigWidth - 1) else BigInt(0)
+      (BigInt(sign) << (expWidth + sigWidth)) | (BigInt((1 << expWidth) - 1) << sigWidth) | fracBits
+    } else {
+      // Exact decomposition: |value| = mant * 2^scale
+      val (mant, scale) = if (exp32 == 0) (frac, 1 - BIAS32 - 23) else (frac | BigInt(0x800000), exp32 - BIAS32 - 23)
+      roundExactRNE(expWidth, sigWidth, sign, mant, scale)
+    }
   }
 
   /** Generalized helper function to encode Float as UInt, doesn't follow IEEE 754 standard but uses all bins for value
@@ -177,9 +95,10 @@ trait FpUtils {
       } else {
         // Normal to normal
         // tentativeExp can be = 0 (which is a subnormal value in IEEE 754, but we now consider it normal)
-        val shift                = 23 - sigWidth
-        val (roundedFrac, carry) = round(frac, shift, sigWidth)
-        val expFinal             = if (carry) tentativeExp + 1 else tentativeExp
+        val rounded     = roundRNE(frac, 23 - sigWidth)
+        val carry       = rounded.testBit(sigWidth) // rounded up past the mantissa: bump the exponent
+        val roundedFrac = rounded & ((BigInt(1) << sigWidth) - 1)
+        val expFinal    = if (carry) tentativeExp + 1 else tentativeExp
         if (expFinal > maxExpTarget) {
           // Overflow -> max value
           (sign << expSigWidth) | (maxExpTarget << sigWidth) | ((1 << sigWidth) - 1)
@@ -352,5 +271,124 @@ trait FpUtils {
 
   def uintToStr(bits: BigInt, fpType: FpType): String =
     bits.toString(2).reverse.padTo(fpType.width, '0').reverse.grouped(4).mkString("_")
+
+  /** Exact fused multiply-add: computes a*b + c exactly (BigInt) and rounds once with RNE to `inTypeC`.
+    *
+    * This is the IEEE-correct single-rounding reference. Inputs are interpreted with IEEE semantics, so non-IEEE types
+    * (FP8_ALT) are not supported here. Verified in FpGoldenVectorTest.
+    */
+  def fmaExact(a: Float, b: Float, c: Float, inTypeA: FpType, inTypeB: FpType, inTypeC: FpType): Float = {
+    def out(bits: BigInt): Float = uintToFloat(inTypeC, bits)
+    val da = decodeIEEEBits(inTypeA, floatToUInt(inTypeA, a))
+    val db = decodeIEEEBits(inTypeB, floatToUInt(inTypeB, b))
+    val dc = decodeIEEEBits(inTypeC, floatToUInt(inTypeC, c))
+    def isInf(x:   Either[String, _]) = x.left.toOption.exists(_.endsWith("inf"))
+    def infSign(x: Either[String, _]) = if (x.left.toOption.contains("-inf")) 1 else 0
+    if (da == Left("nan") || db == Left("nan") || dc == Left("nan")) return out(canonicalNaNBits(inTypeC))
+    val aZero = da.exists(_._2 == 0); val bZero = db.exists(_._2 == 0)
+    if ((isInf(da) && bZero) || (aZero && isInf(db))) return out(canonicalNaNBits(inTypeC))
+    val prodSign     =
+      (if (isInf(da)) infSign(da) else da.toOption.get._1) ^ (if (isInf(db)) infSign(db) else db.toOption.get._1)
+    if (isInf(da) || isInf(db)) {
+      if (isInf(dc) && infSign(dc) != prodSign) return out(canonicalNaNBits(inTypeC))
+      return out(infinityBits(inTypeC, prodSign))
+    }
+    if (isInf(dc)) return out(infinityBits(inTypeC, infSign(dc)))
+    val (_, ma, ea)  = da.toOption.get
+    val (_, mb, eb)  = db.toOption.get
+    val (sc, mc, ec) = dc.toOption.get
+    val pm           = ma * mb
+    val pe           = ea + eb
+    // Both product and addend zero: sign follows the IEEE addition-of-zeros rule (RNE)
+    if (pm == 0 && mc == 0)
+      return out(BigInt(if (prodSign == 1 && sc == 1) 1 else 0) << (inTypeC.expWidth + inTypeC.sigWidth))
+    val e0 = math.min(pe, ec)
+    val sum = (if (prodSign == 1) -(pm << (pe - e0)) else pm << (pe - e0)) +
+      (if (sc == 1) -(mc << (ec - e0)) else mc << (ec - e0))
+    if (sum == 0) return 0.0f // exact cancellation -> +0 in RNE
+    out(roundExactRNE(inTypeC.expWidth, inTypeC.sigWidth, if (sum < 0) 1 else 0, sum.abs, e0))
+  }
+
+  /** Exact multiply: a*b rounded once with RNE to `typeC`, with IEEE multiply semantics for the sign of zero (a zero or
+    * underflowed result carries the XOR of the operand signs, unlike an FMA with a +0 addend). Verified in
+    * FpGoldenVectorTest.
+    */
+  def mulExact(a: Float, b: Float, typeA: FpType, typeB: FpType, typeC: FpType): Float = {
+    val r       = fmaExact(a, b, 0.0f, typeA, typeB, typeC)
+    val signXor =
+      ((floatToUInt(typeA, a) >> (typeA.width - 1)) ^ (floatToUInt(typeB, b) >> (typeB.width - 1))) == 1
+    if (r == 0.0f && !r.isNaN && signXor) -0.0f else r
+  }
+
+  /** Software model of the hardware FMA for any FpType combination: dispatches to the exact IEEE single-rounding
+    * reference (fmaExact) when all types are IEEE 754, and to a float-based fallback for non-IEEE types (FP8_ALT).
+    */
+  def fmaHardware(a: Float, b: Float, c: Float, typeA: FpType, typeB: FpType, typeC: FpType): Float =
+    if (typeA.isIEEE754 && typeB.isIEEE754 && typeC.isIEEE754) fmaExact(a, b, c, typeA, typeB, typeC)
+    else {
+      val r = quantize(typeA, a) * quantize(typeB, b) + quantize(typeC, c)
+      if (r == -0f) 0f else r
+    }
+
+  /** Software model of the hardware multiplier for any FpType combination: mulExact for IEEE 754 types, float-based
+    * fallback for non-IEEE types (FP8_ALT).
+    */
+  def mulHardware(a: Float, b: Float, typeA: FpType, typeB: FpType, typeC: FpType): Float =
+    if (typeA.isIEEE754 && typeB.isIEEE754 && typeC.isIEEE754) mulExact(a, b, typeA, typeB, typeC)
+    else (a, typeA) * (b, typeB)
+
+  /** Decode IEEE bits to (sign, significand, scale) with value = (-1)^sign * mant * 2^scale, or Left(special). */
+  private def decodeIEEEBits(t: FpType, bits: BigInt): Either[String, (Int, BigInt, Int)] = {
+    val EXP     = t.expWidth; val MAN = t.sigWidth
+    val s       = ((bits >> (EXP + MAN)) & 1).toInt
+    val e       = ((bits >> MAN) & ((1 << EXP) - 1)).toInt
+    val m       = bits & ((BigInt(1) << MAN) - 1)
+    val allOnes = (1 << EXP) - 1
+    if (e == allOnes && m != 0) Left("nan")
+    else if (e == allOnes) Left(if (s == 1) "-inf" else "+inf")
+    else if (e == 0) Right((s, m, 1 - expBias(EXP) - MAN))
+    else Right((s, m | (BigInt(1) << MAN), e - expBias(EXP) - MAN))
+  }
+
+  private def canonicalNaNBits(t: FpType): BigInt =
+    (BigInt((1 << t.expWidth) - 1) << t.sigWidth) | (BigInt(1) << (t.sigWidth - 1))
+
+  private def infinityBits(t: FpType, sign: Int): BigInt =
+    (BigInt(sign) << (t.expWidth + t.sigWidth)) | (BigInt((1 << t.expWidth) - 1) << t.sigWidth)
+
+  /** RNE-round the exact value (-1)^sign * mant * 2^scale to IEEE bits (single rounding, gradual underflow, overflow to
+    * infinity). Together with roundRNE this is the single source of truth for all IEEE rounding: floatToUInt (and thus
+    * quantize), fmaExact, mulExact, and roundDoubleToFp all delegate here.
+    */
+  def roundExactRNE(expWidth: Int, sigWidth: Int, sign: Int, mant: BigInt, scale: Int): BigInt = {
+    val EXP      = expWidth; val MAN = sigWidth; val BIAS = expBias(EXP)
+    val signBits = BigInt(sign) << (EXP + MAN)
+    if (mant == 0) return signBits
+    val unbExp   = scale + mant.bitLength - 1 // value in [2^unbExp, 2^(unbExp+1))
+    val lsbW     = math.max(unbExp - MAN, 1 - BIAS - MAN) // weight of the target LSB
+    val shift    = lsbW - scale
+    val m2       = roundRNE(mant, shift)
+    if (m2 == 0) return signBits // rounded to zero
+    val nb     = m2.bitLength
+    val biased = lsbW + nb - 1 + BIAS
+    if (biased <= 0) signBits | m2 // subnormal (m2 == 2^MAN encodes min normal)
+    else if (biased >= (1 << EXP) - 1) signBits | (BigInt((1 << EXP) - 1) << MAN) // overflow -> infinity
+    else signBits | (BigInt(biased) << MAN) | ((m2 & ((BigInt(1) << MAN) - 1)) << (MAN - (nb - 1)))
+  }
+
+  /** Round a double to `fpType` with RNE (single rounding). Decomposes the double exactly and delegates to
+    * roundExactRNE. Exact-zero doubles return +0, matching the HW adders, which emit +0 for exact-zero sums.
+    */
+  def roundDoubleToFp(fpType: FpType, x: Double): Float = {
+    if (x.isNaN) return Float.NaN
+    if (x == 0.0) return uintToFloat(fpType, BigInt(0)) // +0 (HW emits +0 for exact-zero adds)
+    val bits = java.lang.Double.doubleToLongBits(x)
+    val sign = ((bits >>> 63) & 1).toInt
+    val e    = ((bits >>> 52) & 0x7ff).toInt
+    val frac = BigInt(bits) & ((BigInt(1) << 52) - 1)
+    if (e == 0x7ff) return if (sign == 1) Float.NegativeInfinity else Float.PositiveInfinity // inf (NaN handled above)
+    val (mant, scale) = if (e == 0) (frac, 1 - 1023 - 52) else (frac | (BigInt(1) << 52), e - 1023 - 52)
+    uintToFloat(fpType, roundExactRNE(fpType.expWidth, fpType.sigWidth, sign, mant, scale))
+  }
 
 }

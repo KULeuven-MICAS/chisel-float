@@ -1,5 +1,6 @@
 // Copyright 2025 KU Leuven.
-// KU Leuven confidential. Do not distribute.
+// Solderpad Hardware License, Version 0.51, see LICENSE for details.
+// SPDX-License-Identifier: SHL-0.51
 //
 // Author: Robin Geens <robin.geens@kuleuven.be>
 
@@ -8,7 +9,7 @@ package fp_unit
 import chisel3._
 
 import chiseltest._
-import chiseltest.simulator.VerilatorBackendAnnotation
+import chiseltest.simulator.VcsBackendAnnotation
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
@@ -19,9 +20,7 @@ class FpFmaFpTest extends AnyFlatSpec with Matchers with ChiselScalatestTester w
 
   def testSingle(dut: FpFmaFp, test_id: Int, a: Float, b: Float, c: Float) = {
 
-    // Must be computed in double precision to prevent rounding between FP32 mul and add
-    val mul_fp   = quantize(dut.typeA, a).toDouble * quantize(dut.typeB, b).toDouble
-    val expected = (mul_fp + quantize(dut.typeC, c)).toFloat
+    val expected = fmaHardware(a, b, c, dut.typeA, dut.typeB, dut.typeC)
 
     // Quantize the inputs
     val a_uint = floatToUInt(dut.typeA, a)
@@ -107,93 +106,93 @@ class FpFmaFpTest extends AnyFlatSpec with Matchers with ChiselScalatestTester w
 
   it should "perform FP32 x FP32 + FP32 FMA correctly" in {
     test(new FpFmaFp(typeA = FP32, typeB = FP32, typeC = FP32))
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
+      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
   }
 
   it should "perform FP16 x FP16 + FP16 FMA correctly" in {
     test(new FpFmaFp(typeA = FP16, typeB = FP16, typeC = FP16))
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
+      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
   }
 
   it should "perform FP16 x FP16 + FP32 FMA correctly" in {
     test(new FpFmaFp(typeA = FP16, typeB = FP16, typeC = FP32))
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
+      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
   }
 
   it should "perform FP16 x FP32 + FP32 FMA correctly" in {
     test(new FpFmaFp(typeA = FP16, typeB = FP32, typeC = FP32))
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
+      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
   }
 
   it should "perform BF16 x BF16 + FP32 FMA correctly" in {
     test(new FpFmaFp(typeA = BF16, typeB = BF16, typeC = FP32))
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
+      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
   }
 
   it should "perform BF16 x BF16 + BF16 FMA correctly" in {
     test(new FpFmaFp(typeA = BF16, typeB = BF16, typeC = BF16))
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
+      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
   }
 
   it should "perform FP32 x BF16 + FP32 FMA correctly" in {
     test(new FpFmaFp(typeA = FP32, typeB = BF16, typeC = FP32))
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
+      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
   }
 
   it should "perform FP8 x FP8 + FP32 FMA correctly" in {
     test(new FpFmaFp(typeA = FP8, typeB = FP8, typeC = FP32))
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
+      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
   }
 
   it should "perform FP8 x FP16 + FP16 FMA correctly" in {
     test(new FpFmaFp(typeA = FP8, typeB = FP16, typeC = FP16))
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
+      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
   }
 
   it should "perform FP16 x FP8 + FP16 FMA correctly" in {
     test(new FpFmaFp(typeA = FP16, typeB = FP8, typeC = FP16))
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
+      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
   }
 
   it should "perform FP8 x FP16 + FP32 FMA correctly" in {
     test(new FpFmaFp(typeA = FP8, typeB = FP16, typeC = FP32))
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
+      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
   }
 
   it should "perform FP16 x FP8 + FP32 FMA correctly" in {
     test(new FpFmaFp(typeA = FP16, typeB = FP8, typeC = FP32))
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
+      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
   }
 
   it should "handle FP8 x FP16 + FP16 special cases" in {
     test(new FpFmaFp(typeA = FP8, typeB = FP16, typeC = FP16))
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testSpecialCases(dut) }
+      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testSpecialCases(dut) }
   }
 
   it should "perform FP32 x FP32 + FP16 FMA correctly" in {
     test(new FpFmaFp(typeA = FP32, typeB = FP32, typeC = FP16))
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
+      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
   }
 
   it should "perform FP32 x FP16 + FP8 FMA correctly" in {
     test(new FpFmaFp(typeA = FP32, typeB = FP16, typeC = FP8))
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
+      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
   }
 
   it should "perform BF16 x FP32 + FP8 FMA correctly" in {
     test(new FpFmaFp(typeA = BF16, typeB = FP32, typeC = FP8))
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
+      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
   }
 
   it should "perform BF16 x FP16 + FP16 FMA correctly" in {
     test(new FpFmaFp(typeA = BF16, typeB = FP16, typeC = FP16))
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
+      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
   }
 
   // Special cases
   it should "handle FP32 x FP8 + BF16 special cases" in {
     test(new FpFmaFp(typeA = FP32, typeB = FP8, typeC = BF16))
-      .withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testSpecialCases(dut) }
+      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testSpecialCases(dut) }
   }
 
 }

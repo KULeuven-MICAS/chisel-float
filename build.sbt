@@ -4,7 +4,7 @@ ThisBuild / scalaVersion := "2.13.14"
 ThisBuild / version      := "0.1.0"
 ThisBuild / organization := "MICAS (KU Leuven)"
 
-Test / parallelExecution := true
+Test / parallelExecution := false
 Test / fork              := true
 
 val chiselVersion = "6.4.0"

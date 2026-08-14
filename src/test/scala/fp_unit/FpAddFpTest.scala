@@ -10,7 +10,7 @@ package fp_unit
 import chisel3._
 
 import chiseltest._
-import chiseltest.simulator.VerilatorBackendAnnotation
+import chiseltest.simulator.VcsBackendAnnotation
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
@@ -80,67 +80,67 @@ class FpAddFpTest extends AnyFlatSpec with Matchers with ChiselScalatestTester w
   it should "perform FP32 + FP32 -> FP32 correctly" in {
     test(
       new FpAddFp(typeA = FP32, typeB = FP32, typeC = FP32)
-    ).withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => test_all_fp_add_fp(dut) }
+    ).withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => test_all_fp_add_fp(dut) }
   }
 
   it should "perform FP16 + FP16 -> FP16 correctly" in {
     test(
       new FpAddFp(typeA = FP16, typeB = FP16, typeC = FP16)
-    ).withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => test_all_fp_add_fp(dut) }
+    ).withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => test_all_fp_add_fp(dut) }
   }
 
   it should "perform FP16 + FP16 -> FP32 correctly" in {
     test(
       new FpAddFp(typeA = FP16, typeB = FP16, typeC = FP32)
-    ).withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => test_all_fp_add_fp(dut) }
+    ).withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => test_all_fp_add_fp(dut) }
   }
 
   it should "perform FP16 + FP32 -> FP32 correctly" in {
     test(
       new FpAddFp(typeA = FP16, typeB = FP32, typeC = FP32)
-    ).withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => test_all_fp_add_fp(dut) }
+    ).withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => test_all_fp_add_fp(dut) }
   }
 
   it should "perform FP16 + FP32 -> FP16 correctly" in {
     test(
       new FpAddFp(typeA = FP16, typeB = FP32, typeC = FP16)
-    ).withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => test_all_fp_add_fp(dut) }
+    ).withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => test_all_fp_add_fp(dut) }
   }
 
   it should "perform BF16 + BF16 -> FP32 correctly" in {
     test(
       new FpAddFp(typeA = BF16, typeB = BF16, typeC = FP32)
-    ).withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => test_all_fp_add_fp(dut) }
+    ).withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => test_all_fp_add_fp(dut) }
   }
 
   it should "perform BF16 + BF16 -> BF16 correctly" in {
     test(
       new FpAddFp(typeA = BF16, typeB = BF16, typeC = BF16)
-    ).withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => test_all_fp_add_fp(dut) }
+    ).withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => test_all_fp_add_fp(dut) }
   }
 
   it should "perform FP32 + BF16 -> FP32 correctly" in {
     test(
       new FpAddFp(typeA = FP32, typeB = BF16, typeC = FP32)
-    ).withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => test_all_fp_add_fp(dut) }
+    ).withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => test_all_fp_add_fp(dut) }
   }
 
 // Special cases
   it should "handle special cases in FP16 + FP32 -> FP16" in {
     test(
       new FpAddFp(typeA = FP16, typeB = FP32, typeC = FP16)
-    ).withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testSpecialCases(dut) }
+    ).withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testSpecialCases(dut) }
   }
 
   it should "handle special cases in FP16 + FP32 -> FP32" in {
     test(
       new FpAddFp(typeA = FP16, typeB = FP32, typeC = FP32)
-    ).withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testSpecialCases(dut) }
+    ).withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testSpecialCases(dut) }
   }
 
   it should "handle special cases in FP32 + FP16 -> BF16" in {
     test(
       new FpAddFp(typeA = FP32, typeB = FP16, typeC = BF16)
-    ).withAnnotations(Seq(VerilatorBackendAnnotation, WriteVcdAnnotation)) { dut => testSpecialCases(dut) }
+    ).withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testSpecialCases(dut) }
   }
 }
