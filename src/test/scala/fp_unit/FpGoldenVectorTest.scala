@@ -15,11 +15,11 @@ import scala.io.Source
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
-/** Verifies the software references fmaExact and mulExact against golden vectors produced  by MPFR (an external,
-  * independently validated IEEE-754 oracle)
+/** Verifies the software references fmaExact, mulExact and addExact against golden
+  * vectors produced by MPFR (an external, independently validated IEEE-754 oracle)
   */
 class FpGoldenVectorTest extends AnyFlatSpec with Matchers with FpUtils {
-  behavior of "fmaExact/mulExact vs MPFR golden vectors"
+  behavior of "fmaExact/mulExact/addExact vs MPFR golden vectors"
 
   private def isNaNBits(t: FpType, bits: BigInt): Boolean = {
     val expAllOnes = (1 << t.expWidth) - 1
@@ -84,6 +84,26 @@ class FpGoldenVectorTest extends AnyFlatSpec with Matchers with FpUtils {
     assert(mism == 0)
   }
 
+  /** addExact (and addHardware, which dispatches to it for IEEE types) must match MPFR bit-exactly, including signed
+    * zeros; NaN is compared as a class.
+    */
+  private def checkAdd(tA: FpType, tB: FpType, tC: FpType, name: String): Unit = {
+    var total = 0; var mism = 0; var shown = 0
+    for (Array(aB, bB, expB) <- loadVectors(s"add_${name}.txt.gz")) {
+      val a    = uintToFloat(tA, aB); val b = uintToFloat(tB, bB)
+      val resB = floatToUInt(tC, addExact(a, b, tA, tB, tC))
+      total += 1
+      if (!matches(tC, resB, expB)) {
+        mism += 1
+        if (shown < 20) {
+          println(f"MISMATCH addExact $name a=0x$aB%08x b=0x$bB%08x mpfr=0x$expB%08x got=0x$resB%08x"); shown += 1
+        }
+      }
+    }
+    println(s"addExact $name: $mism / $total mismatches vs MPFR")
+    assert(mism == 0)
+  }
+
   val combos = Seq(
     (BF16, BF16, BF16),
     (FP16, FP16, FP16),
@@ -96,9 +116,26 @@ class FpGoldenVectorTest extends AnyFlatSpec with Matchers with FpUtils {
 
   def name(t: FpType): String = t.getClass.getSimpleName.stripSuffix("$")
 
+  val addCombos = Seq(
+    (BF16, BF16, BF16),
+    (FP16, FP16, FP16),
+    (FP32, FP32, FP32),
+    (FP16, FP32, FP32),
+    (BF16, BF16, FP32),
+    (FP16, FP16, FP32),
+    (FP16, FP32, FP16), // narrowing
+    (FP32, FP16, BF16), // narrowing
+    (FP32, FP32, FP16)  // narrowing
+  )
+
   for ((tA, tB, tC) <- combos) {
     val n = s"${name(tA)}_${name(tB)}_${name(tC)}"
     it should s"match MPFR for fmaExact ${name(tA)}*${name(tB)}+${name(tC)}" in checkFma(tA, tB, tC, n)
     it should s"match MPFR for mulExact ${name(tA)}*${name(tB)}->${name(tC)}" in checkMul(tA, tB, tC, n)
+  }
+
+  for ((tA, tB, tC) <- addCombos) {
+    val n = s"${name(tA)}_${name(tB)}_${name(tC)}"
+    it should s"match MPFR for addExact ${name(tA)}+${name(tB)}->${name(tC)}" in checkAdd(tA, tB, tC, n)
   }
 }

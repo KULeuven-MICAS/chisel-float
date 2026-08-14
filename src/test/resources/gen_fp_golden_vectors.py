@@ -4,8 +4,8 @@
 #
 # Author: Robin Geens <robin.geens@kuleuven.be>
 #
-# Generate golden test vectors for the Scala software FP references (fmaExact, mulExact)
-# using MPFR as the IEEE-754 oracle.
+# Generate golden test vectors for the Scala software FP references (fmaExact, mulExact,
+# addExact) using MPFR as the IEEE-754 oracle.
 
 
 import gzip
@@ -35,6 +35,17 @@ FMA_COMBOS = [
     ("BF16", "BF16", "FP32"),
 ]
 MUL_COMBOS = FMA_COMBOS
+ADD_COMBOS = [
+    ("BF16", "BF16", "BF16"),
+    ("FP16", "FP16", "FP16"),
+    ("FP32", "FP32", "FP32"),
+    ("FP16", "FP32", "FP32"),
+    ("BF16", "BF16", "FP32"),
+    ("FP16", "FP16", "FP32"),
+    ("FP16", "FP32", "FP16"),  # narrowing
+    ("FP32", "FP16", "BF16"),  # narrowing
+    ("FP32", "FP32", "FP16"),  # narrowing
+]
 
 # Wide context used only to hold input values exactly (never rounds anything relevant)
 WIDE = context(precision=64, emin=-100_000, emax=100_000, round=RoundToNearest)
@@ -207,6 +218,59 @@ def gen_mul(tA, tB, tC, rng):
     return lines
 
 
+def gen_add(tA, tB, tC, rng):
+    (eA, sA), (eB, sB), (eC, sC) = FORMATS[tA], FORMATS[tB], FORMATS[tC]
+    ctx = ieee_ctx(eC, sC)
+    ctxB = ieee_ctx(eB, sB)
+    wA, wB = eA + sA + 1, eB + sB + 1
+
+    def result_bits(a_bits, b_bits):
+        with WIDE:
+            a, b = mpfr(decode(a_bits, eA, sA)), mpfr(decode(b_bits, eB, sB))
+        with ctx:
+            r = gmpy2.add(a, b)
+        return encode(float(r), eC, sC)
+
+    vectors = []
+
+    # 1) full cross product of boundary patterns
+    bndA, bndB = boundary_patterns(eA, sA), boundary_patterns(eB, sB)
+    for a in bndA:
+        for b in bndB:
+            vectors.append((a, b))
+
+    # 2) uniform random bit patterns
+    for _ in range(N_RANDOM):
+        vectors.append((rng.getrandbits(wA), rng.getrandbits(wB)))
+
+    # 3) near-cancellation: b ~= -a rounded to B's format, half of them off by 1-3 ulp
+    for i in range(N_CANCEL):
+        a_bits = rng.getrandbits(wA)
+        with ctxB:
+            nb = mpfr(-decode(a_bits, eA, sA))
+        bf = float(nb)
+        if math.isnan(bf):
+            b_bits = rng.getrandbits(wB)
+        else:
+            b_bits = encode(bf, eB, sB)
+            if i % 2 == 1:
+                b_bits ^= rng.choice([1, 2, 3])
+        vectors.append((a_bits, b_bits))
+
+    # 4) magnitude skew: tiny vs large operand, stressing the full-sticky alignment regime
+    tinyA = [1, 2, 3, (1 << sA) - 1, (1 << sA), (1 << (eA + sA)) | 1]
+    tinyB = [1, 2, 3, (1 << sB) - 1, (1 << sB), (1 << (eB + sB)) | 1]
+    for i in range(N_SKEW):
+        if i % 2 == 0:
+            vectors.append((rng.getrandbits(wA), rng.choice(tinyB) | (rng.getrandbits(1) << (wB - 1))))
+        else:
+            vectors.append((rng.choice(tinyA) | (rng.getrandbits(1) << (wA - 1)), rng.getrandbits(wB)))
+
+    hA, hB, hC = ((w + 3) // 4 for w in (wA, wB, eC + sC + 1))
+    lines = [f"{a:0{hA}x} {b:0{hB}x} {result_bits(a, b):0{hC}x}" for a, b in vectors]
+    return lines
+
+
 def main():
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     for tA, tB, tC in FMA_COMBOS:
@@ -226,6 +290,17 @@ def main():
         path = OUT_DIR / f"mul_{tA}_{tB}_{tC}.txt.gz"
         header = (
             f"# mulExact golden vectors: {tA} * {tB} -> {tC}, oracle: MPFR {gmpy2.mpfr_version()}, seed {SEED + 1}\n"
+        )
+        with gzip.open(path, "wt") as f:
+            f.write(header)
+            f.write("\n".join(lines) + "\n")
+        print(f"{path.name}: {len(lines)} vectors")
+    for tA, tB, tC in ADD_COMBOS:
+        rng = random.Random(SEED + 2)
+        lines = gen_add(tA, tB, tC, rng)
+        path = OUT_DIR / f"add_{tA}_{tB}_{tC}.txt.gz"
+        header = (
+            f"# ideal-add golden vectors: {tA} + {tB} -> {tC}, oracle: MPFR {gmpy2.mpfr_version()}, seed {SEED + 2}\n"
         )
         with gzip.open(path, "wt") as f:
             f.write(header)

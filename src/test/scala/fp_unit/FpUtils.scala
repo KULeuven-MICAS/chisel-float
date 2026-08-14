@@ -337,6 +337,42 @@ trait FpUtils {
     if (typeA.isIEEE754 && typeB.isIEEE754 && typeC.isIEEE754) mulExact(a, b, typeA, typeB, typeC)
     else (a, typeA) * (b, typeB)
 
+  /** Exact add: a+b rounded once with RNE to `typeC`, with IEEE addition semantics for the sign of zero. IEEE 754
+    * types only. Verified in FpGoldenVectorTest.
+    */
+  def addExact(a: Float, b: Float, typeA: FpType, typeB: FpType, typeC: FpType): Float = {
+    require(typeA.isIEEE754 && typeB.isIEEE754 && typeC.isIEEE754, "addExact only supports IEEE 754 types")
+    def out(bits: BigInt): Float = uintToFloat(typeC, bits)
+    val da = decodeIEEEBits(typeA, floatToUInt(typeA, a))
+    val db = decodeIEEEBits(typeB, floatToUInt(typeB, b))
+    def isInf(x:   Either[String, _]) = x.left.toOption.exists(_.endsWith("inf"))
+    def infSign(x: Either[String, _]) = if (x.left.toOption.contains("-inf")) 1 else 0
+    if (da == Left("nan") || db == Left("nan")) return out(canonicalNaNBits(typeC))
+    if (isInf(da) || isInf(db)) {
+      if (isInf(da) && isInf(db) && infSign(da) != infSign(db)) return out(canonicalNaNBits(typeC))
+      return out(infinityBits(typeC, if (isInf(da)) infSign(da) else infSign(db)))
+    }
+    val (sa, ma, ea) = da.toOption.get
+    val (sb, mb, eb) = db.toOption.get
+    // Both operands zero: sign follows the IEEE addition-of-zeros rule (RNE)
+    if (ma == 0 && mb == 0) return out(BigInt(if (sa == 1 && sb == 1) 1 else 0) << (typeC.expWidth + typeC.sigWidth))
+    val e0  = math.min(ea, eb)
+    val sum = (if (sa == 1) -(ma << (ea - e0)) else ma << (ea - e0)) +
+      (if (sb == 1) -(mb << (eb - e0)) else mb << (eb - e0))
+    if (sum == 0) return 0.0f // exact cancellation -> +0 in RNE
+    out(roundExactRNE(typeC.expWidth, typeC.sigWidth, if (sum < 0) 1 else 0, sum.abs, e0))
+  }
+
+  /** Software model of the hardware adder for any FpType combination: addExact for IEEE 754 types, float-based fallback for non-IEEE types (FP8_ALT).
+    */
+  def addHardware(a: Float, b: Float, typeA: FpType, typeB: FpType, typeC: FpType): Float =
+    if (typeA.isIEEE754 && typeB.isIEEE754 && typeC.isIEEE754) addExact(a, b, typeA, typeB, typeC)
+    else (a, typeA) + (b, typeB)
+
+  /** Same-format add, the common case in accelerator datapaths. */
+  def addHardware(a: Float, b: Float, fpType: FpType): Float = addHardware(a, b, fpType, fpType, fpType)
+
+
   /** Decode IEEE bits to (sign, significand, scale) with value = (-1)^sign * mant * 2^scale, or Left(special). */
   private def decodeIEEEBits(t: FpType, bits: BigInt): Either[String, (Int, BigInt, Int)] = {
     val EXP     = t.expWidth; val MAN = t.sigWidth
