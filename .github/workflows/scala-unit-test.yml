@@ -20,5 +20,8 @@ jobs:
             github.ref_name == 'main' }}
           activate-environment: true
       - name: Run the unit tests
+        # Generates the MPFR golden vectors first; fail instead of skipping FpGoldenVectorTest if they are missing
+        env:
+          FP_GOLDEN_REQUIRED: 1
         run: |
-          sbt test
+          pixi run test

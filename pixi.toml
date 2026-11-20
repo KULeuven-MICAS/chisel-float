@@ -10,9 +10,21 @@ platforms = ["linux-64"]
 version = "0.2.8"
 
 [tasks]
+golden = { cmd = "python src/test/resources/gen_fp_golden_vectors.py", inputs = [
+  "src/test/resources/gen_fp_golden_vectors.py",
+], outputs = [
+  "generated/fp_golden/*.txt.gz",
+], description = "Generate the MPFR golden vectors for FpGoldenVectorTest (skipped when up to date)" }
+test = { cmd = "sbt test", depends-on = ["golden"], description = "Run all unit tests" }
+fmt = { cmd = "sbt scalafmtAll", description = "Format all Scala sources" }
+lint = { cmd = "sbt scalafmtCheckAll", description = "Check the formatting of all Scala sources" }
 
 [dependencies]
 verilator = ">=5.30,<6"
 sbt = ">=1.10.2,<2"
+openjdk = ">=21,<24"
+# Golden vector generator: Python with MPFR bindings
+python = ">=3.11,<3.14"
+gmpy2 = ">=2.1"
 # [activation.env]
 # VLT_ROOT = "${CONDA_PREFIX}/share/verilator"

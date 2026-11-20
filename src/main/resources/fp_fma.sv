@@ -46,7 +46,11 @@ module fp_fma #(
   localparam int unsigned PRECISION_BITS_B = MAN_BITS_B + 1;
   localparam int unsigned PRECISION_BITS_C = MAN_BITS_C + 1;
 
-  localparam int unsigned MUL_WIDTH = fpnew_pkg_snax::maximum(PRECISION_BITS_A + PRECISION_BITS_B, PRECISION_BITS_C);
+  // +2 guard bits: when PRECISION_BITS_C > PRECISION_BITS_A + PRECISION_BITS_B the output round/sticky
+  // positions reach below the product LSB, so the window must extend 2 bits further down
+  localparam int unsigned MUL_WIDTH = fpnew_pkg_snax::maximum(
+      PRECISION_BITS_A + PRECISION_BITS_B, PRECISION_BITS_C
+  ) + 2;
   localparam int unsigned PRODUCT_SHIFT = MUL_WIDTH - (PRECISION_BITS_A + PRECISION_BITS_B);
   localparam int unsigned LOWER_SUM_WIDTH = MUL_WIDTH + 3;
   localparam int unsigned LZC_RESULT_WIDTH = $clog2(LOWER_SUM_WIDTH);
@@ -150,12 +154,8 @@ module fp_fma #(
     result_is_special = 1'b0;
 
     if ((info_a.is_inf && info_b.is_zero) || (info_a.is_zero && info_b.is_inf)) begin
+      // inf x 0 is invalid, whatever the addend: canonical qNaN
       result_is_special = 1'b1;
-      special_result = '{
-          sign: operand_a.sign ^ operand_b.sign,
-          exponent: '1,
-          mantissa: 2 ** (MAN_BITS_C - 1)  // canonical qNaN
-      };
     end else if (any_operand_nan) begin
       result_is_special = 1'b1;
     end else if (any_operand_inf) begin
@@ -169,6 +169,38 @@ module fp_fma #(
       end
     end
   end
+
+  // -----------------------------------------------
+  // Input mantissa normalization (subnormal inputs)
+  // -----------------------------------------------
+  // Normalize subnormal input mantissas so the product has at most 1 leading zero
+  logic [PRECISION_BITS_A-1:0] mantissa_a_raw, mantissa_a;
+  logic [PRECISION_BITS_B-1:0] mantissa_b_raw, mantissa_b;
+  logic [$clog2(PRECISION_BITS_A)-1:0] lzc_a;
+  logic [$clog2(PRECISION_BITS_B)-1:0] lzc_b;
+
+  assign mantissa_a_raw = {info_a.is_normal, operand_a.mantissa};
+  assign mantissa_b_raw = {info_b.is_normal, operand_b.mantissa};
+
+  lzc_snax #(
+      .WIDTH(PRECISION_BITS_A),
+      .MODE (1)
+  ) i_lzc_mantissa_a (
+      .in_i   (mantissa_a_raw),
+      .cnt_o  (lzc_a),
+      .empty_o( )
+  );
+  lzc_snax #(
+      .WIDTH(PRECISION_BITS_B),
+      .MODE (1)
+  ) i_lzc_mantissa_b (
+      .in_i   (mantissa_b_raw),
+      .cnt_o  (lzc_b),
+      .empty_o( )
+  );
+
+  assign mantissa_a = mantissa_a_raw << lzc_a;
+  assign mantissa_b = mantissa_b_raw << lzc_b;
 
   // ---------------------------
   // Initial exponent data path
@@ -185,10 +217,11 @@ module fp_fma #(
   assign exponent_c = signed'({1'b0, operand_c.exponent});
 
   assign exponent_addend = signed'(exponent_c + $signed({1'b0, ~info_c.is_normal}));  // 0 as subnorm
+  // Zero product: force the addend-anchored path with a bias-independent exponent below any real addend exponent 
   assign exponent_product = (info_a.is_zero || info_b.is_zero)
-                                ? 2 - signed'(BIAS_A) - signed'(BIAS_B) + signed'(BIAS_C)
-                                : signed'(exponent_a + info_a.is_subnormal
-                                        + exponent_b + info_b.is_subnormal
+                                ? -signed'(PRECISION_BITS_C + 2)
+                                : signed'(exponent_a + info_a.is_subnormal - signed'({1'b0, lzc_a})
+                                        + exponent_b + info_b.is_subnormal - signed'({1'b0, lzc_b})
                                         - signed'(BIAS_A) - signed'(BIAS_B) + signed'(BIAS_C));
   assign exponent_difference = exponent_addend - exponent_product;
   assign tentative_exponent = (exponent_difference > 0) ? exponent_addend : exponent_product;
@@ -211,15 +244,11 @@ module fp_fma #(
   // ------------------
   // Product data path
   // ------------------
-  logic [PRECISION_BITS_A-1:0] mantissa_a;
-  logic [PRECISION_BITS_B-1:0] mantissa_b;
   logic [PRECISION_BITS_C-1:0] mantissa_c;
   logic [       MUL_WIDTH-1:0] product;
   logic [INTERMEDIATE_WIDTH:0] product_shifted;
 
-  // Add implicit bits to mantissa
-  assign mantissa_a = {info_a.is_normal, operand_a.mantissa};
-  assign mantissa_b = {info_b.is_normal, operand_b.mantissa};
+  // Add implicit bit to mantissa (a and b are normalized above)
   assign mantissa_c = {info_c.is_normal, operand_c.mantissa};
 
   // Mantissa multiplier (a*b)

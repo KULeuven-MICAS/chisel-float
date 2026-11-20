@@ -11,7 +11,7 @@ import chisel3._
 import chisel3.experimental.RawParam
 import chisel3.util._
 
-class FpMulFpBlackBox(topmodule: String, typeA: FpType, typeB: FpType, typeC: FpType)
+class FpMulFpBlackBox(typeA: FpType, typeB: FpType, typeC: FpType)
     extends BlackBox(
       Map(
         "FpFormat_a"   -> RawParam(typeA.fpnewFormatEnum),
@@ -21,12 +21,17 @@ class FpMulFpBlackBox(topmodule: String, typeA: FpType, typeB: FpType, typeC: Fp
     )
     with HasBlackBoxResource {
 
+  require(
+    typeA.isIEEE754 && typeB.isIEEE754 && typeC.isIEEE754,
+    s"fp_mul supports IEEE 754 formats only, got $typeA x $typeB -> $typeC"
+  )
+
   val io = IO(new Bundle {
     val operand_a_i = Input(UInt(typeA.W))
     val operand_b_i = Input(UInt(typeB.W))
     val result_o    = Output(UInt(typeC.W))
   })
-  override def desiredName: String = topmodule
+  override def desiredName: String = "fp_mul"
 
   addResource("common_block/fpnew_pkg_snax.sv")
   addResource("common_block/fpnew_classifier.sv")
@@ -36,9 +41,75 @@ class FpMulFpBlackBox(topmodule: String, typeA: FpType, typeB: FpType, typeC: Fp
 
 }
 
-class FpMulFp(val typeA: FpType, val typeB: FpType, val typeC: FpType, modulename: String = "fp_mul")
-    extends Module
-    with RequireAsyncReset {
+class FpMulFpAltToIEEEBlackBox(typeA: FpType, typeB: FpType, typeC: FpType)
+    extends BlackBox(
+      Map(
+        "FpFormat_a"   -> RawParam(typeA.fpnewFormatEnum),
+        "FpFormat_b"   -> RawParam(typeB.fpnewFormatEnum),
+        "FpFormat_out" -> RawParam(typeC.fpnewFormatEnum)
+      )
+    )
+    with HasBlackBoxResource {
+  require(
+    !typeA.isIEEE754 && !typeB.isIEEE754 && typeC.isIEEE754,
+    s"fp_mul_alt needs non-IEEE 754 operands and an IEEE 754 result, got $typeA x $typeB -> $typeC"
+  )
+
+  val io = IO(new Bundle {
+    val operand_a_i = Input(UInt(typeA.W))
+    val operand_b_i = Input(UInt(typeB.W))
+    val result_o    = Output(UInt(typeC.W))
+  })
+  override def desiredName: String = "fp_mul_alt"
+
+  addResource("common_block/fpnew_pkg_snax.sv")
+  addResource("common_block/fpnew_classifier.sv")
+  addResource("common_block/fpnew_rounding.sv")
+  addResource("common_block/lzc.sv")
+  addResource("fp_mul_alt.sv")
+
+}
+
+class FpMulFpAltToAltBlackBox(typeA: FpType, typeB: FpType, typeC: FpType)
+    extends BlackBox(
+      Map(
+        "FpFormat_a"   -> RawParam(typeA.fpnewFormatEnum),
+        "FpFormat_b"   -> RawParam(typeB.fpnewFormatEnum),
+        "FpFormat_out" -> RawParam(typeC.fpnewFormatEnum)
+      )
+    )
+    with HasBlackBoxResource {
+
+  require(
+    !typeA.isIEEE754 && !typeB.isIEEE754 && !typeC.isIEEE754,
+    s"fp_mul_alt_to_alt needs non-IEEE 754 operands and result, got $typeA x $typeB -> $typeC"
+  )
+
+  val io = IO(new Bundle {
+    val operand_a_i = Input(UInt(typeA.W))
+    val operand_b_i = Input(UInt(typeB.W))
+    val result_o    = Output(UInt(typeC.W))
+  })
+  override def desiredName: String = "fp_mul_alt_to_alt"
+
+  addResource("common_block/fpnew_pkg_snax.sv")
+  addResource("common_block/fpnew_classifier.sv")
+  addResource("common_block/fpnew_rounding.sv")
+  addResource("common_block/lzc.sv")
+  addResource("fp_mul_alt_to_alt.sv")
+
+}
+
+/** Combinational multiplier: out = in_a * in_b, rounded once into typeC. */
+class FpMulFp(val typeA: FpType, val typeB: FpType, val typeC: FpType) extends Module {
+  require(
+    typeA.isIEEE754 == typeB.isIEEE754,
+    s"FpMulFp: either both or neither operand must be IEEE 754, got $typeA x $typeB"
+  )
+  require(
+    !typeA.isIEEE754 || typeC.isIEEE754,
+    s"FpMulFp: IEEE 754 operands need an IEEE 754 result format, got $typeA x $typeB -> $typeC"
+  )
 
   val io = IO(new Bundle {
     val in_a = Input(UInt(typeA.W))
@@ -46,17 +117,26 @@ class FpMulFp(val typeA: FpType, val typeB: FpType, val typeC: FpType, modulenam
     val out  = Output(UInt(typeC.W))
   })
 
-  val sv_module = Module(new FpMulFpBlackBox(modulename, typeA, typeB, typeC))
+  if (typeA.isIEEE754) {
+    val sv_module = Module(new FpMulFpBlackBox(typeA, typeB, typeC))
+    io.out                   := sv_module.io.result_o
+    sv_module.io.operand_a_i := io.in_a
+    sv_module.io.operand_b_i := io.in_b
 
-  io.out                   := sv_module.io.result_o
-  sv_module.io.operand_a_i := io.in_a
-  sv_module.io.operand_b_i := io.in_b
+  } else if (typeC.isIEEE754) {
+    val sv_module = Module(new FpMulFpAltToIEEEBlackBox(typeA, typeB, typeC))
+    io.out                   := sv_module.io.result_o
+    sv_module.io.operand_a_i := io.in_a
+    sv_module.io.operand_b_i := io.in_b
 
+  } else {
+    val sv_module = Module(new FpMulFpAltToAltBlackBox(typeA, typeB, typeC))
+    io.out                   := sv_module.io.result_o
+    sv_module.io.operand_a_i := io.in_a
+    sv_module.io.operand_b_i := io.in_b
+  }
 }
 
 object FpMulFpEmitter extends App {
-  emitVerilog(
-    new FpMulFp(typeA = BF16, typeB = BF16, typeC = BF16),
-    Array("--target-dir", "generated/fp_unit")
-  )
+  FpEmitter(new FpMulFp(typeA = FP8_ALT, typeB = FP8_ALT, typeC = BF16), "FpMulFp")
 }

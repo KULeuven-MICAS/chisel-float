@@ -21,6 +21,11 @@ class FpAddFpBlackBox(modulename: String, typeA: FpType, typeB: FpType, typeC: F
     )
     with HasBlackBoxResource {
 
+  require(
+    typeA.isIEEE754 && typeB.isIEEE754 && typeC.isIEEE754,
+    s"FpAddFp supports IEEE 754 formats only, got $typeA + $typeB -> $typeC"
+  )
+
   val io = IO(new Bundle {
     val operand_a_i = Input(UInt(typeA.W))
     val operand_b_i = Input(UInt(typeB.W))
@@ -36,10 +41,8 @@ class FpAddFpBlackBox(modulename: String, typeA: FpType, typeB: FpType, typeC: F
 
 }
 
-/** TODO why don't we use the blackbox directly? */
-class FpAddFp(val typeA: FpType, val typeB: FpType, val typeC: FpType, modulename: String = "fp_add")
-    extends Module
-    with RequireAsyncReset {
+/** Combinational adder: out = in_a + in_b, rounded once into typeC. */
+class FpAddFp(val typeA: FpType, val typeB: FpType, val typeC: FpType, modulename: String = "fp_add") extends Module {
 
   val io = IO(new Bundle {
     val in_a = Input(UInt(typeA.W))
@@ -55,7 +58,7 @@ class FpAddFp(val typeA: FpType, val typeB: FpType, val typeC: FpType, modulenam
 
 }
 
-/** Pipeline a single FpAddFp module. Mainly used for separate synthesis experiments. */
+/** [[FpAddFp]] between input and output register stages, for synthesis experiments. */
 class FpAddFpSequential(
   typeA:      FpType,
   typeB:      FpType,
@@ -63,8 +66,7 @@ class FpAddFpSequential(
   nPipesPre:  Int = 1,
   nPipesPost: Int = 1,
   modulename: String
-) extends Module
-    with RequireAsyncReset {
+) extends Module {
   override def desiredName: String = modulename
 
   val io = IO(new Bundle {
@@ -73,7 +75,7 @@ class FpAddFpSequential(
     val out  = Output(UInt(typeC.W))
   })
 
-  val fpAddFp = Module(new FpAddFp(typeA, typeB, typeC, s"${modulename}_comb"))
+  val fpAddFp = Module(new FpAddFp(typeA, typeB, typeC))
 
   fpAddFp.io.in_a := ShiftRegister(io.in_a, nPipesPre)
   fpAddFp.io.in_b := ShiftRegister(io.in_b, nPipesPre)
@@ -82,10 +84,7 @@ class FpAddFpSequential(
 }
 
 object FpAddFpEmitter extends App {
-  emitVerilog(
-    new FpAddFp(typeA = FP16, typeB = FP16, typeC = FP16),
-    Array("--target-dir", "generated/fp_unit")
-  )
+  FpEmitter(new FpAddFp(typeA = FP16, typeB = FP16, typeC = FP16), "FpAddFp")
 }
 
 object FpAddFpSequentialEmitter extends App {
@@ -93,16 +92,10 @@ object FpAddFpSequentialEmitter extends App {
     nPipesPre  <- 1 to 3
     nPipesPost <- 1 to 3
   } {
-    emitVerilog(
-      new FpAddFpSequential(
-        typeA      = FP16,
-        typeB      = FP16,
-        typeC      = FP16,
-        nPipesPre,
-        nPipesPost,
-        modulename = s"fp_add_${nPipesPre}_${nPipesPost}"
-      ),
-      Array("--target-dir", "generated/fp_unit")
+    val name = s"fp_add_${nPipesPre}_${nPipesPost}"
+    FpEmitter(
+      new FpAddFpSequential(typeA = FP16, typeB = FP16, typeC = FP16, nPipesPre, nPipesPost, modulename = name),
+      name
     )
   }
 }

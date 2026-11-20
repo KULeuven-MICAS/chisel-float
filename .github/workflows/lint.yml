@@ -31,4 +31,4 @@ jobs:
           activate-environment: true
       - name: Check format
         run: |
-          sbt scalafmtCheck
+          pixi run lint
