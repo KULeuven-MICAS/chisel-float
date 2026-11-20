@@ -5,9 +5,8 @@
 
 // Copyright 2025 KU Leuven
 // Modified by: Robin Geens <robin.geens@kuleuven.be>
-// Converts IEEE 754 compliant floating point to non-IEEE 754 compliant floating point.
 
-// For now, this is implemented as a multiplication with constant 1 (exp=BIAS_IN, mantissa=1).
+// Converts an IEEE 754 format to a non-IEEE 754 format (FP8_ALT), rounding to nearest, ties to even.
 module fp_convert_to_alt #(
     parameter fpnew_pkg_snax::fp_format_e FpFormat_in  = fpnew_pkg_snax::fp_format_e'(2),  //FP16 
     parameter fpnew_pkg_snax::fp_format_e FpFormat_out = fpnew_pkg_snax::fp_format_e'(0),  //FP32
@@ -90,18 +89,14 @@ module fp_convert_to_alt #(
   // ---------------------
   logic any_operand_inf;
   logic any_operand_nan;
-  logic signalling_nan;
-  logic effective_subtraction;
-  logic tentative_sign;
 
   // Reduction for special case handling
   assign any_operand_inf = info_a.is_inf;
   assign any_operand_nan = info_a.is_nan;
-  assign signalling_nan  = info_a.is_signalling;
 
   logic result_sign;
 
-  assign result_sign = operand_a.sign ^ 0;
+  assign result_sign = operand_a.sign;
   // ----------------------
   // Special case handling
   // ----------------------
@@ -116,9 +111,8 @@ module fp_convert_to_alt #(
   // ---------------------------
   // Initial exponent data path
   // ---------------------------
-  // TODO needs extra bit for signed?
-  logic signed [EXP_BITS_A-1:0] exponent_a;
-  logic signed [ EXP_WIDTH-1:0] exponent_product;
+  logic signed [ EXP_BITS_A:0] exponent_a;
+  logic signed [EXP_WIDTH-1:0] exponent_product;
 
 
   assign exponent_a = signed'({1'b0, operand_a.exponent});
@@ -210,16 +204,14 @@ module fp_convert_to_alt #(
   logic [EXP_BITS_C+MAN_BITS_C-1:0] pre_round_abs;  // absolute value of result before rounding
   logic [                      1:0] round_sticky_bits;
 
-  logic of_before_round, of_after_round;  // overflow
-  logic uf_before_round, uf_after_round;  // underflow
+  logic                             of_before_round;  // overflow
   logic                             result_zero;
 
   logic                             rounded_sign;
   logic [EXP_BITS_C+MAN_BITS_C-1:0] rounded_abs;  // absolute value of result after rounding
 
-  // Classification before round. RISC-V mandates checking underflow AFTER rounding!
+  // Classification before round. The largest exponent is an ordinary binade in the output format
   assign of_before_round = final_exponent >= 2 ** (EXP_BITS_C);
-  assign uf_before_round = final_exponent == 0;  // exponent for subnormals capped to 0
 
   // Assemble result before rounding. In case of overflow, the largest normal value is set.
   assign pre_round_sign = result_sign;
@@ -228,7 +220,6 @@ module fp_convert_to_alt #(
   assign pre_round_mantissa = final_mantissa[MAN_BITS_C:1];
   assign pre_round_abs = {pre_round_exponent, pre_round_mantissa};
 
-  // In case of overflow, the round and sticky bits are set for proper rounding
   assign round_sticky_bits = {final_mantissa[0], sticky_after_norm};
 
   // Perform rounding

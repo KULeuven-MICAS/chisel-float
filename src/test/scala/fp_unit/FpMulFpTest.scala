@@ -10,181 +10,85 @@ package fp_unit
 import chisel3._
 
 import chiseltest._
-import chiseltest.simulator.VcsBackendAnnotation
 import org.scalatest.flatspec.AnyFlatSpec
-import org.scalatest.matchers.should.Matchers
 
-class FpMulFpTest extends AnyFlatSpec with Matchers with ChiselScalatestTester with FpUtils {
+import FpStimulus._
+
+class FpMulFpTest extends AnyFlatSpec with ChiselScalatestTester with FpTestHarness {
   behavior of "FpMulFp"
 
-  val test_num = 1000
+  val ieeeTypes = Seq(FP32, FP16, BF16, FP8)
 
-  def testSingle(dut: FpMulFp, test_id: Int, a: Float, b: Float) = {
+  /** IEEE 754 combinations. FP_TEST_LEVEL=extended runs all 64. */
+  val ieeeCombos: Seq[(FpType, FpType, FpType)] =
+    if (FpTestConfig.isExtended) for {
+      a <- ieeeTypes
+      b <- ieeeTypes
+      c <- ieeeTypes
+    } yield (a, b, c)
+    else
+      Seq(
+        (FP32, FP32, FP32),
+        (FP16, FP16, FP16),
+        (BF16, BF16, BF16),
+        (FP8, FP8, FP8),
+        (FP16, FP16, FP32),
+        (BF16, BF16, FP32),
+        (BF16, FP16, FP32),
+        (FP16, BF16, FP32),
+        (FP8, FP8, FP32),
+        (FP8, FP8, FP16),
+        (FP8, FP8, BF16),
+        (FP16, FP8, FP32),
+        (FP8, FP32, FP16),
+        (FP16, FP32, FP16), // narrowing
+        (FP16, FP32, BF16), // narrowing
+        (FP32, FP32, FP16), // narrowing
+        (FP32, FP32, BF16), // narrowing
+        (BF16, BF16, FP8)   // narrowing
+      )
 
-    val expected = mulHardware(a, b, dut.typeA, dut.typeB, dut.typeC)
+  /** Non-IEEE FP8_ALT operands, into every output format. */
+  val altCombos: Seq[(FpType, FpType, FpType)] =
+    Seq(FP8_ALT, BF16, FP16, FP32, FP8).map(out => (FP8_ALT, FP8_ALT, out))
 
-    // Quantize the inputs
-    val a_uint = floatToUInt(dut.typeA, a)
-    val b_uint = floatToUInt(dut.typeB, b)
+  /** Exhaustive for 8x8-bit operands, otherwise boundary, random and threshold vectors. */
+  def stimulus(tA: FpType, tB: FpType, tC: FpType): Iterator[Seq[BigInt]] = {
+    if (tA.width + tB.width <= 16) return exhaustive(tA.width, tB.width)
+    val r = rng(s"mul-${name(tA)}-${name(tB)}-${name(tC)}")
+    val n = FpTestConfig.scaled(20000)
 
-    dut.io.in_a.poke(a_uint.U)
-    dut.io.in_b.poke(b_uint.U)
-    dut.clock.step(1)
-    val result = dut.io.out.peek()
-
-    // Debugging
-    val a_fp          = quantize(dut.typeA, a)
-    val b_fp          = quantize(dut.typeB, b)
-    val result_fp     = uintToFloat(dut.typeC, result)
-    val expected_uint = floatToUInt(dut.typeC, expected)
-    val expected_fp   = quantize(dut.typeC, expected)
-
-    withClue(
-      s"❌[Test $test_id] $a_fp x $b_fp = $expected_fp (expected) != $result_fp (got)\n" +
-        s"(expected) ${uintToStr(expected_uint, dut.typeC)} (got) ${uintToStr(result.litValue, dut.typeC)}"
-    ) { (expected_fp, dut.typeC) === result shouldBe true }
+    val corners    = cross(boundary(tA), boundary(tB))
+    val random     = Iterator.fill(n)(Seq(bits(r, tA.width), bits(r, tB.width)))
+    // product exponent ea + eb around a critical exponent of the output format
+    val (loA, hiA) = exponentRange(tA)
+    val (loB, hiB) = exponentRange(tB)
+    val crit       = criticalExponents(tC)
+    val near       = Iterator.fill(n) {
+      val e    = crit(r.nextInt(crit.length))
+      val from = math.max(loA, e - hiB)
+      val to   = math.min(hiA, e - loB)
+      val ea   = if (from <= to) from + r.nextInt(to - from + 1) else loA + r.nextInt(hiA - loA + 1)
+      Seq(nearExponent(r, tA, ea), nearExponent(r, tB, e - ea - r.nextInt(2)))
+    }
+    corners ++ random ++ near
   }
 
-  def testAll(dut: FpMulFp) = {
-    val testCases = Seq.fill(test_num)((genRandomValue(dut.typeA), genRandomValue(dut.typeB))) ++ Seq.fill(test_num)(
-      (getTrueRandomValue(dut.typeA), getTrueRandomValue(dut.typeB))
-    )
-    testCases.zipWithIndex.foreach { case ((a, b), index) => testSingle(dut, index + 1, a, b) }
-  }
-
-  def testSpecialCases(dut: FpMulFp) = {
-    val specialCases = Seq(
-      (0.0f, 0.0f),                                     // Zero cases
-      (0.0f, 1.0f),
-      (1.0f, 0.0f),
-      (Float.NaN, 1.0f),                                // NaN cases
-      (1.0f, Float.NaN),
-      (Float.NaN, Float.NaN),
-      (Float.PositiveInfinity, 1.0f),                   // Infinity cases
-      (1.0f, Float.PositiveInfinity),
-      (Float.NegativeInfinity, 1.0f),
-      (1.0f, Float.NegativeInfinity),
-      (Float.PositiveInfinity, Float.NegativeInfinity), // +inf + -inf = NaN
-      (Float.NegativeInfinity, Float.PositiveInfinity), // -inf + +inf = NaN
-      (Float.MinPositiveValue, Float.MinPositiveValue), // Smallest positive
-      (Float.MinPositiveValue, 0.0f),
-      (0.0f, Float.MinPositiveValue)
-    )
-    specialCases.zipWithIndex.foreach { case ((a, b), index) => testSingle(dut, index + 1, a, b) }
-  }
-
-  /** TODO why do we have this */
-  def testAltToAltNonCompliantEdges(dut: FpMulFp) = {
-    // FP8_ALT layout: sign[7], exp[6:2], mantissa[1:0]
-    val expMask      = (BigInt(1) << dut.typeC.expWidth) - 1
-    val mantissaMask = (BigInt(1) << dut.typeC.sigWidth) - 1
-
-    val positiveMax = (expMask << dut.typeC.sigWidth) | mantissaMask
-    val negativeMax = (BigInt(1) << (dut.typeC.width - 1)) | positiveMax
-
-    // Largest positive values should overflow and saturate to largest positive output.
-    dut.io.in_a.poke(positiveMax.U)
-    dut.io.in_b.poke(positiveMax.U)
-    dut.clock.step(1)
-    dut.io.out.peek().litValue shouldBe positiveMax
-
-    // Sign should be preserved when saturation happens.
-    dut.io.in_a.poke(negativeMax.U)
-    dut.io.in_b.poke(positiveMax.U)
-    dut.clock.step(1)
-    dut.io.out.peek().litValue shouldBe negativeMax
-
-    // Smallest non-zero magnitudes should underflow to zero magnitude (sign ignored).
-    val smallestPositive = BigInt(1) // sign=0, exp=0, mantissa=1
-    dut.io.in_a.poke(smallestPositive.U)
-    dut.io.in_b.poke(smallestPositive.U)
-    dut.clock.step(1)
-    val underflowResult  = dut.io.out.peek().litValue
-    (underflowResult & ((expMask << dut.typeC.sigWidth) | mantissaMask)) shouldBe 0
-  }
-
-  it should "perform FP8_ALT x FP8_ALT = BF16 correctly" in {
-    test(
-      new FpMulFp(typeA = FP8_ALT, typeB = FP8_ALT, typeC = BF16)
-    ).withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
-  }
-
-  it should "perform FP8_ALT x FP8_ALT = FP8_ALT correctly" in {
-    test(
-      new FpMulFp(typeA = FP8_ALT, typeB = FP8_ALT, typeC = FP8_ALT)
-    ).withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
-  }
-
-  it should "saturate overflow and flush underflow for FP8_ALT x FP8_ALT = FP8_ALT" in {
-    test(
-      new FpMulFp(typeA = FP8_ALT, typeB = FP8_ALT, typeC = FP8_ALT)
-    ).withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut =>
-      testAltToAltNonCompliantEdges(dut)
+  for ((tA, tB, tC) <- ieeeCombos ++ altCombos) {
+    val label = s"${name(tA)} x ${name(tB)} -> ${name(tC)}"
+    it should s"match the reference model bit-exactly for $label" in {
+      test(new FpMulFp(tA, tB, tC)).withAnnotations(FpTestConfig.annotations) { dut =>
+        sweep(s"FpMulFp $label", Seq(tA, tB), tC, stimulus(tA, tB, tC)) { v =>
+          dut.io.in_a.poke(v(0).U)
+          dut.io.in_b.poke(v(1).U)
+          dut.io.out.peek().litValue
+        } { v => FpReference.mul(tA, tB, tC, v(0), v(1)) }
+      }
     }
   }
 
-  it should "perform FP16 x FP16 = FP32 correctly" in {
-    test(
-      new FpMulFp(typeA = FP16, typeB = FP16, typeC = FP32)
-    ).withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
+  it should "reject IEEE x IEEE -> FP8_ALT and mixed IEEE/non-IEEE operands" in {
+    assertElaborationFails(new FpMulFp(FP16, FP16, FP8_ALT), "FP8_ALT")
+    assertElaborationFails(new FpMulFp(FP8_ALT, FP16, FP32), "IEEE 754")
   }
-
-  it should "perform FP16 x FP16 = FP16 correctly" in {
-    test(new FpMulFp(typeA = FP16, typeB = FP16, typeC = FP16))
-      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
-  }
-
-  it should "perform BF16 x BF16 = FP32 correctly" in {
-    test(
-      new FpMulFp(typeA = BF16, typeB = BF16, typeC = FP32)
-    ).withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
-  }
-
-  it should "perform BF16 x BF16 = BF16 correctly" in {
-    test(
-      new FpMulFp(typeA = BF16, typeB = BF16, typeC = BF16)
-    ).withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
-  }
-
-  it should "perform BF16 x FP16 = FP32 correctly" in {
-    test(new FpMulFp(typeA = BF16, typeB = FP16, typeC = FP32))
-      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
-  }
-
-  it should "perform FP8 x FP8 = FP32 correctly" in {
-    test(new FpMulFp(typeA = FP8, typeB = FP8, typeC = FP32))
-      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
-  }
-
-  it should "perform FP8 x FP8 = FP16 correctly" in {
-    test(new FpMulFp(typeA = FP8, typeB = FP8, typeC = FP16))
-      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
-  }
-
-  it should "perform FP8 x FP32 = FP16 correctly" in {
-    test(new FpMulFp(typeA = FP8, typeB = FP32, typeC = FP16))
-      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
-  }
-
-  it should "perform FP16 x FP8 = FP32 correctly" in {
-    test(new FpMulFp(typeA = FP16, typeB = FP8, typeC = FP32))
-      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAll(dut) }
-  }
-
-  // Special cases
-  it should "handle special cases (NaN, Infinity, Underflow) for FP16 x FP32 -> FP16" in {
-    test(new FpMulFp(typeA = FP16, typeB = FP32, typeC = FP16))
-      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testSpecialCases(dut) }
-  }
-
-  it should "handle special cases (NaN, Infinity, Underflow) for FP16 x BF16 -> FP32" in {
-    test(new FpMulFp(typeA = FP16, typeB = BF16, typeC = FP32))
-      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testSpecialCases(dut) }
-  }
-
-  it should "handle special cases (NaN, Infinity, Underflow) for FP16 x FP32 -> BF16" in {
-    test(new FpMulFp(typeA = FP16, typeB = FP32, typeC = BF16))
-      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testSpecialCases(dut) }
-  }
-
 }

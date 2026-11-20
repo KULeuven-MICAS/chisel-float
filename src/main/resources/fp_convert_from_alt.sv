@@ -5,10 +5,8 @@
 
 // Copyright 2025 KU Leuven
 // Modified by: Robin Geens <robin.geens@kuleuven.be>
-// Converts non-IEEE 754 compliant floating point to an IEEE 754 compliant floating point.
 
-
-// For now, this is implemented as a multiplication with constant 1 (exp=BIAS_IN, mantissa=1).
+// Converts a non-IEEE 754 format (FP8_ALT) to an IEEE 754 format, rounding to nearest, ties to even.
 module fp_convert_from_alt #(
     parameter fpnew_pkg_snax::fp_format_e FpFormat_in  = fpnew_pkg_snax::fp_format_e'(2),  //FP16 
     parameter fpnew_pkg_snax::fp_format_e FpFormat_out = fpnew_pkg_snax::fp_format_e'(0),  //FP32
@@ -74,8 +72,6 @@ module fp_convert_from_alt #(
   // ---------------------
   logic is_zero_a;
   assign is_zero_a = (operand_a.exponent == '0) && (operand_a.mantissa == '0);
-  logic effective_subtraction;
-  logic tentative_sign;
   logic result_sign;
   assign result_sign = operand_a.sign;
 
@@ -131,7 +127,7 @@ module fp_convert_from_alt #(
   assign leading_zero_count_sgn = signed'({2'b01});
 
 
-  // TODO clean up
+  // Inputs are always normal; results below the smallest normal output are shifted into the subnormal range
   always_comb begin : norm_shift_amount
     if (exponent_product - leading_zero_count_sgn + 1 > 0) begin
       normalized_exponent = exponent_product - leading_zero_count_sgn + 1;  // Account for LZC shift

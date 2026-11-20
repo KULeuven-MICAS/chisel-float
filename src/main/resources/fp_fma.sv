@@ -154,12 +154,8 @@ module fp_fma #(
     result_is_special = 1'b0;
 
     if ((info_a.is_inf && info_b.is_zero) || (info_a.is_zero && info_b.is_inf)) begin
+      // inf x 0 is invalid, whatever the addend: canonical qNaN
       result_is_special = 1'b1;
-      special_result = '{
-          sign: operand_a.sign ^ operand_b.sign,
-          exponent: '1,
-          mantissa: 2 ** (MAN_BITS_C - 1)  // canonical qNaN
-      };
     end else if (any_operand_nan) begin
       result_is_special = 1'b1;
     end else if (any_operand_inf) begin

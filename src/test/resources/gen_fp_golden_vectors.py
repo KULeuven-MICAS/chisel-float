@@ -4,8 +4,7 @@
 #
 # Author: Robin Geens <robin.geens@kuleuven.be>
 #
-# Generate golden test vectors for the Scala software FP references (fmaExact, mulExact,
-# addExact) using MPFR as the IEEE-754 oracle.
+# Writes MPFR golden vectors to generated/fp_golden for FpGoldenVectorTest. Run with `pixi run golden`.
 
 
 import gzip
@@ -24,28 +23,36 @@ N_SKEW = 20_000
 OUT_DIR = Path(__file__).resolve().parents[3] / "generated" / "fp_golden"
 
 # (name, expWidth, sigWidth). sigWidth = fraction bits, as in fp_unit.FpType
-FORMATS = {"FP16": (5, 10), "BF16": (8, 7), "FP32": (8, 23)}
+FORMATS = {"FP8": (5, 2), "FP16": (5, 10), "BF16": (8, 7), "FP32": (8, 23)}
+# Keep these lists in sync with FpGoldenVectorTest
 FMA_COMBOS = [
     ("BF16", "BF16", "BF16"),
     ("FP16", "FP16", "FP16"),
     ("FP32", "FP32", "FP32"),
+    ("FP8", "FP8", "FP8"),
     ("BF16", "FP16", "BF16"),
     ("FP16", "BF16", "FP16"),
     ("FP16", "FP16", "FP32"),
     ("BF16", "BF16", "FP32"),
+    ("FP8", "FP16", "FP16"),
+    ("FP32", "FP32", "FP8"),
 ]
 MUL_COMBOS = FMA_COMBOS
 ADD_COMBOS = [
     ("BF16", "BF16", "BF16"),
     ("FP16", "FP16", "FP16"),
     ("FP32", "FP32", "FP32"),
+    ("FP8", "FP8", "FP8"),
     ("FP16", "FP32", "FP32"),
     ("BF16", "BF16", "FP32"),
     ("FP16", "FP16", "FP32"),
     ("FP16", "FP32", "FP16"),  # narrowing
     ("FP32", "FP16", "BF16"),  # narrowing
     ("FP32", "FP32", "FP16"),  # narrowing
+    ("FP16", "FP16", "FP8"),  # narrowing
 ]
+CVT_COMBOS = [(a, c) for a in FORMATS for c in FORMATS if a != c]
+DIV_SQRT_FORMATS = ["BF16", "FP16", "FP32"]
 
 # Wide context used only to hold input values exactly (never rounds anything relevant)
 WIDE = context(precision=64, emin=-100_000, emax=100_000, round=RoundToNearest)
@@ -206,12 +213,16 @@ def gen_mul(tA, tB, tC, rng):
         return encode(float(r), eC, sC)
 
     vectors = []
-    bndA, bndB = boundary_patterns(eA, sA), boundary_patterns(eB, sB)
-    for a in bndA:
-        for b in bndB:
-            vectors.append((a, b))
-    for _ in range(N_RANDOM):
-        vectors.append((rng.getrandbits(wA), rng.getrandbits(wB)))
+    if wA + wB <= 16:
+        # small formats: every operand pair
+        vectors = [(a, b) for a in range(1 << wA) for b in range(1 << wB)]
+    else:
+        bndA, bndB = boundary_patterns(eA, sA), boundary_patterns(eB, sB)
+        for a in bndA:
+            for b in bndB:
+                vectors.append((a, b))
+        for _ in range(N_RANDOM):
+            vectors.append((rng.getrandbits(wA), rng.getrandbits(wB)))
 
     hA, hB, hC = ((w + 3) // 4 for w in (wA, wB, eC + sC + 1))
     lines = [f"{a:0{hA}x} {b:0{hB}x} {result_bits(a, b):0{hC}x}" for a, b in vectors]
@@ -271,41 +282,96 @@ def gen_add(tA, tB, tC, rng):
     return lines
 
 
+def gen_cvt(tA, tC, rng):
+    (eA, sA), (eC, sC) = FORMATS[tA], FORMATS[tC]
+    ctx = ieee_ctx(eC, sC)
+    wA, wC = eA + sA + 1, eC + sC + 1
+
+    def result_bits(a_bits):
+        with WIDE:
+            a = mpfr(decode(a_bits, eA, sA))
+        with ctx:
+            r = gmpy2.mul(a, 1)  # a full operation, so that MPFR rounds and subnormalizes into the target format
+        return encode(float(r), eC, sC)
+
+    if wA <= 16:
+        vectors = list(range(1 << wA))  # every input
+    else:
+        vectors = boundary_patterns(eA, sA) + [rng.getrandbits(wA) for _ in range(N_RANDOM)]
+        if sC < sA:
+            # rounding ties and their neighbours: the dropped fraction bits are exactly half an ulp of the target
+            tie = 1 << (sA - sC - 1)
+            for _ in range(N_SKEW):
+                vectors.append((rng.getrandbits(wA) & ~((tie << 1) - 1)) | (tie + rng.choice([-1, 0, 0, 1])))
+
+    hA, hC = (wA + 3) // 4, (wC + 3) // 4
+    return [f"{a:0{hA}x} {result_bits(a):0{hC}x}" for a in vectors]
+
+
+def gen_div(t, rng):
+    e, s = FORMATS[t]
+    ctx = ieee_ctx(e, s)
+    w = e + s + 1
+
+    def result_bits(a_bits, b_bits):
+        with WIDE:
+            a, b = mpfr(decode(a_bits, e, s)), mpfr(decode(b_bits, e, s))
+        with ctx:
+            r = gmpy2.div(a, b)
+        return encode(float(r), e, s)
+
+    bnd = boundary_patterns(e, s)
+    vectors = [(a, b) for a in bnd for b in bnd]
+    vectors += [(rng.getrandbits(w), rng.getrandbits(w)) for _ in range(N_RANDOM)]
+    h = (w + 3) // 4
+    return [f"{a:0{h}x} {b:0{h}x} {result_bits(a, b):0{h}x}" for a, b in vectors]
+
+
+def gen_sqrt(t, rng):
+    e, s = FORMATS[t]
+    ctx = ieee_ctx(e, s)
+    w = e + s + 1
+
+    def result_bits(a_bits):
+        with WIDE:
+            a = mpfr(decode(a_bits, e, s))
+        with ctx:
+            r = gmpy2.sqrt(a)
+        return encode(float(r), e, s)
+
+    if w <= 16:
+        vectors = list(range(1 << w))  # every input
+    else:
+        vectors = boundary_patterns(e, s) + [rng.getrandbits(w) for _ in range(N_RANDOM)]
+    h = (w + 3) // 4
+    return [f"{a:0{h}x} {result_bits(a):0{h}x}" for a in vectors]
+
+
+def write(name, description, seed, lines):
+    path = OUT_DIR / f"{name}.txt.gz"
+    with gzip.open(path, "wt") as f:
+        f.write(f"# {description}, oracle: MPFR {gmpy2.mpfr_version()}, seed {seed}\n")
+        f.write("\n".join(lines) + "\n")
+    print(f"{path.name}: {len(lines)} vectors")
+
+
 def main():
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     for tA, tB, tC in FMA_COMBOS:
-        rng = random.Random(SEED)
-        lines = gen_fma(tA, tB, tC, rng)
-        path = OUT_DIR / f"fma_{tA}_{tB}_{tC}.txt.gz"
-        header = (
-            f"# fmaExact golden vectors: {tA} * {tB} + {tC} -> {tC}, oracle: MPFR {gmpy2.mpfr_version()}, seed {SEED}\n"
-        )
-        with gzip.open(path, "wt") as f:
-            f.write(header)
-            f.write("\n".join(lines) + "\n")
-        print(f"{path.name}: {len(lines)} vectors")
+        lines = gen_fma(tA, tB, tC, random.Random(SEED))
+        write(f"fma_{tA}_{tB}_{tC}", f"fma golden vectors: {tA} * {tB} + {tC} -> {tC}", SEED, lines)
     for tA, tB, tC in MUL_COMBOS:
-        rng = random.Random(SEED + 1)
-        lines = gen_mul(tA, tB, tC, rng)
-        path = OUT_DIR / f"mul_{tA}_{tB}_{tC}.txt.gz"
-        header = (
-            f"# mulExact golden vectors: {tA} * {tB} -> {tC}, oracle: MPFR {gmpy2.mpfr_version()}, seed {SEED + 1}\n"
-        )
-        with gzip.open(path, "wt") as f:
-            f.write(header)
-            f.write("\n".join(lines) + "\n")
-        print(f"{path.name}: {len(lines)} vectors")
+        lines = gen_mul(tA, tB, tC, random.Random(SEED + 1))
+        write(f"mul_{tA}_{tB}_{tC}", f"mul golden vectors: {tA} * {tB} -> {tC}", SEED + 1, lines)
     for tA, tB, tC in ADD_COMBOS:
-        rng = random.Random(SEED + 2)
-        lines = gen_add(tA, tB, tC, rng)
-        path = OUT_DIR / f"add_{tA}_{tB}_{tC}.txt.gz"
-        header = (
-            f"# ideal-add golden vectors: {tA} + {tB} -> {tC}, oracle: MPFR {gmpy2.mpfr_version()}, seed {SEED + 2}\n"
-        )
-        with gzip.open(path, "wt") as f:
-            f.write(header)
-            f.write("\n".join(lines) + "\n")
-        print(f"{path.name}: {len(lines)} vectors")
+        lines = gen_add(tA, tB, tC, random.Random(SEED + 2))
+        write(f"add_{tA}_{tB}_{tC}", f"add golden vectors: {tA} + {tB} -> {tC}", SEED + 2, lines)
+    for tA, tC in CVT_COMBOS:
+        lines = gen_cvt(tA, tC, random.Random(SEED + 3))
+        write(f"cvt_{tA}_{tC}", f"convert golden vectors: {tA} -> {tC}", SEED + 3, lines)
+    for t in DIV_SQRT_FORMATS:
+        write(f"div_{t}", f"div golden vectors: {t} / {t}", SEED + 4, gen_div(t, random.Random(SEED + 4)))
+        write(f"sqrt_{t}", f"sqrt golden vectors: sqrt({t})", SEED + 5, gen_sqrt(t, random.Random(SEED + 5)))
 
 
 if __name__ == "__main__":

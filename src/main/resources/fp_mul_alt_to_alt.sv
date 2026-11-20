@@ -7,7 +7,8 @@
 // Modified by: Man Shi <man.shi@kuleuven.be>
 //              Robin Geens <robin.geens@kuleuven.be>
 // Changes: allow for different a, b, and out data types; remove adder.
-// Implement non-IEEE 754 compliant floating point multiplication, resulting in a non-IEEE 754 compliant floating point.
+
+// Multiplies two non-IEEE 754 (FP8_ALT) operands into a non-IEEE 754 result.
 
 module fp_mul_alt_to_alt #(
     parameter fpnew_pkg_snax::fp_format_e FpFormat_a   = fpnew_pkg_snax::fp_format_e'(2),  //FP16 
@@ -90,9 +91,6 @@ module fp_mul_alt_to_alt #(
   assign is_zero_b = (operand_b.exponent == '0) && (operand_b.mantissa == '0);
 
 
-  // Effective subtraction in FMA occurs when product and addend signs differ
-  logic effective_subtraction;
-  logic tentative_sign;
   logic result_sign;
   assign result_sign = operand_a.sign ^ operand_b.sign;
 
@@ -191,7 +189,6 @@ module fp_mul_alt_to_alt #(
   logic [                      1:0] round_sticky_bits;
 
   logic of_before_round, of_after_round;  // overflow
-  logic uf_before_round, uf_after_round;  // underflow
   logic                             result_zero;
 
   logic                             rounded_sign;
@@ -199,7 +196,6 @@ module fp_mul_alt_to_alt #(
 
   // Classification before round. In non-IEEE output formats, max exponent is still a finite value.
   assign of_before_round = final_exponent > 2 ** (EXP_BITS_C) - 1;
-  assign uf_before_round = final_exponent == 0;  // exponent for subnormals capped to 0
 
   // Assemble result before rounding.
   assign pre_round_sign = result_sign;

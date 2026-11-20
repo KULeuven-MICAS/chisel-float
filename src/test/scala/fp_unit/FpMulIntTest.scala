@@ -7,94 +7,49 @@
 
 package fp_unit
 
-import scala.util.Random
-
 import chisel3._
 
 import chiseltest._
-import chiseltest.simulator.VcsBackendAnnotation
 import org.scalatest.flatspec.AnyFlatSpec
-import org.scalatest.matchers.should.Matchers
 
-class FpMulIntTest extends AnyFlatSpec with Matchers with ChiselScalatestTester with FpUtils {
+import FpReference.mask
+import FpStimulus._
+
+class FpMulIntTest extends AnyFlatSpec with ChiselScalatestTester with FpTestHarness {
   behavior of "FpMulInt"
 
-  val test_num = 1000
+  val widths = 1 to 11
 
-  def genRandomInt(intType: IntType) = Random.nextInt(1 << intType.width) - (1 << (intType.width - 1))
-
-  def testSingle(dut: FpMulInt, test_id: Int, a: Float, b: Int) = {
-
-    val expected =
-      if (dut.typeB.width == 1) quantize(dut.typeA, a) * (if (b == 0) -1 else 1)
-      else quantize(dut.typeA, a) * b
-
-    // Quantize the inputs
-    val a_uint = floatToUInt(dut.typeA, a)
-    val b_uint = (BigInt(b) & ((BigInt(1) << dut.typeB.width) - 1))
-
-    dut.io.in_a.poke(a_uint.U)
-    dut.io.in_b.poke(b_uint.U)
-    dut.clock.step(1)
-    val result = dut.io.out.peek()
-
-    // Debugging
-    val a_fp          = quantize(dut.typeA, a)
-    val result_fp     = uintToFloat(dut.typeC, result)
-    val expected_uint = floatToUInt(dut.typeC, expected)
-    val expected_fp   = quantize(dut.typeC, expected)
-
-    withClue(
-      s"❌[Test $test_id] $a_fp x $b = $expected_fp (expected) != $result_fp (got)\n" +
-        s"(expected) ${uintToStr(expected_uint, dut.typeC)} (got) ${uintToStr(result.litValue, dut.typeC)}"
-    ) { (expected_fp, dut.typeC) === result shouldBe true }
+  /** FP16 boundary values against every integer (or its boundary values), plus random pairs. */
+  def stimulus(w: Int): Iterator[Seq[BigInt]] = {
+    if (FpTestConfig.isExtended && w <= 4) return exhaustive(16, w)
+    val r      = rng(s"mulint-$w")
+    val ints   =
+      if (w <= 8) (0 until (1 << w)).map(BigInt(_))
+      else {
+        val min = BigInt(1) << (w - 1)
+        (Seq[BigInt](0, 1, 2, 3, mask(w), mask(w) - 1, min, min + 1, min - 1) ++ Seq.fill(64)(bits(r, w))).distinct
+      }
+    val random = Iterator.fill(FpTestConfig.scaled(20000))(Seq(bits(r, 16), bits(r, w)))
+    cross(boundary(FP16), ints) ++ random
   }
 
-  def testAll(dut: FpMulInt) = {
-    val testCases = Seq.fill(test_num)((genRandomValue(dut.typeA), genRandomInt(dut.typeB)))
-    testCases.zipWithIndex.foreach { case ((a, b), index) => testSingle(dut, index + 1, a, b) }
-  }
-
-  def testSpecialCases(dut: FpMulInt) = {
-    val specialCases = Seq(
-      (0.0f, 0),                   // Zero cases
-      (0.0f, 1),
-      (1.0f, 0),
-      (Float.NaN, 1),              // NaN cases
-      (Float.PositiveInfinity, 1), // Infinity cases
-      (Float.NegativeInfinity, 1),
-      (Float.MinPositiveValue, 0)
-    )
-    specialCases.zipWithIndex.foreach { case ((a, b), index) => testSingle(dut, index + 1, a, b) }
-  }
-
-  it should "perform FP16-int4 multiply correctly" in {
-    test(new FpMulInt(typeB = Int4)).withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut =>
-      testAll(dut)
+  for (w <- widths) {
+    it should s"match the reference model bit-exactly for FP16 x Int$w -> FP32" in {
+      test(new FpMulInt(typeB = new IntType(w))).withAnnotations(FpTestConfig.annotations) { dut =>
+        sweep(s"FpMulInt FP16 x Int$w -> FP32", Seq(FP16, new IntType(w)), FP32, stimulus(w)) { v =>
+          dut.io.in_a.poke(v(0).U)
+          dut.io.in_b.poke(v(1).U)
+          dut.io.out.peek().litValue
+        } { v => FpReference.mulInt(w, v(0), v(1)) }
+      }
     }
   }
 
-  it should "perform FP16-int3 multiply correctly" in {
-    test(new FpMulInt(typeB = Int3)).withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut =>
-      testAll(dut)
-    }
-  }
-
-  it should "perform FP16-int2 multiply correctly" in {
-    test(new FpMulInt(typeB = Int2)).withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut =>
-      testAll(dut)
-    }
-  }
-
-  it should "perform FP16-int1 multiply correctly" in {
-    test(new FpMulInt(typeB = Int1)).withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut =>
-      testAll(dut)
-    }
-  }
-
-  it should "handle special cases" in {
-    test(new FpMulInt(typeB = Int3)).withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut =>
-      testSpecialCases(dut)
-    }
+  it should "reject unsupported formats and integer widths" in {
+    assertElaborationFails(new FpMulInt(typeB = new IntType(12)), "width")
+    assertElaborationFails(new FpMulInt(typeB = new IntType(0)), "width")
+    assertElaborationFails(new FpMulInt(typeA = BF16, typeB = Int4), "FP16")
+    assertElaborationFails(new FpMulInt(typeB = Int4, typeC = BF16), "FP32")
   }
 }

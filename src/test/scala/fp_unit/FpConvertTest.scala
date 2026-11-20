@@ -9,160 +9,60 @@ package fp_unit
 import chisel3._
 
 import chiseltest._
-import chiseltest.simulator.VcsBackendAnnotation
 import org.scalatest.flatspec.AnyFlatSpec
-import org.scalatest.matchers.should.Matchers
 
-class FpConvertTest extends AnyFlatSpec with Matchers with ChiselScalatestTester with FpUtils {
+import FpReference.zero
+import FpStimulus._
+
+class FpConvertTest extends AnyFlatSpec with ChiselScalatestTester with FpTestHarness {
   behavior of "FpConvert"
 
-  val test_num = 1000
+  val ieeeTypes = Seq(FP32, FP16, BF16, FP8)
 
-  def testSingle(dut: FpConvert, test_id: Int, a: Float) = {
+  /** Every supported conversion: all IEEE pairs (identity included), IEEE <-> FP8_ALT and the FP8_ALT identity. */
+  val pairs: Seq[(FpType, FpType)] =
+    (for {
+      a <- ieeeTypes
+      c <- ieeeTypes
+    } yield (a, c)) ++
+      ieeeTypes.map(a => (a, FP8_ALT)) ++
+      ieeeTypes.map(c => (FP8_ALT, c)) :+
+      ((FP8_ALT, FP8_ALT))
 
-    val in_fp = quantize(dut.typeA, a)
-
-    try {
-      val expected_uint = floatToUInt(dut.typeC, in_fp)
-      val expected_fp   = uintToFloat(dut.typeC, expected_uint)
-
-      // Quantize the inputs
-      val a_uint    = floatToUInt(dut.typeA, a)
-      dut.io.in_a.poke(a_uint.U)
-      dut.clock.step(1)
-      val result    = dut.io.out.peek()
-      val result_fp = uintToFloat(dut.typeC, result)
-
-      withClue(
-        s"❌[Test $test_id] $in_fp -> $expected_fp (expected) != $result_fp (got)\n" +
-          s"(expected) ${uintToStr(expected_uint, dut.typeC)} (got) ${uintToStr(result.litValue, dut.typeC)}"
-      ) { (in_fp, dut.typeC) === result shouldBe true }
-
-    } catch {
-      case e: NotImplementedError => println(s"Skipping value $in_fp: $e")
+  /** Exhaustive for inputs of up to 16 bits, otherwise boundary, per-exponent and threshold vectors. */
+  def stimulus(tA: FpType, tC: FpType): Iterator[Seq[BigInt]] = {
+    if (tA.width <= 16) return exhaustive(tA.width)
+    val r          = rng(s"cvt-${name(tA)}-${name(tC)}")
+    val perExp     = FpTestConfig.scaled(64)
+    val n          = FpTestConfig.scaled(20000)
+    val corners    = boundary(tA).iterator.map(Seq(_))
+    val everyExp   = for {
+      s <- Iterator(0, 1)
+      e <- Iterator.range(0, 1 << tA.expWidth)
+      _ <- Iterator.range(0, perExp)
+    } yield Seq(zero(tA, s) | (BigInt(e) << tA.sigWidth) | bits(r, tA.sigWidth))
+    val crit       = criticalExponents(tC)
+    val near       = Iterator.fill(n)(Seq(nearExponent(r, tA, crit(r.nextInt(crit.length)))))
+    // the full mantissa range just below/above rounding ties into the output precision
+    val tieOffsets = Iterator.fill(n) {
+      val e    = crit(r.nextInt(crit.length)) + r.nextInt(5) - 2
+      val keep = math.max(tC.sigWidth, 1)
+      val tie  = (BigInt(1) << tA.sigWidth) | (BigInt(keep, r) << (tA.sigWidth - keep)) |
+        (BigInt(1) << (tA.sigWidth - keep - 1))
+      Seq(FpReference.encode(tA, r.nextInt(2), perturb(r, tie), e - tA.sigWidth))
     }
+    corners ++ everyExp ++ near ++ tieOffsets
   }
 
-  def testAllConvert(dut: FpConvert) = {
-    val testCases = Seq.fill(test_num)(genRandomValue(dut.typeA)) ++ Seq.fill(test_num)(getTrueRandomValue(dut.typeA))
-    testCases.zipWithIndex.foreach { case (a, index) => testSingle(dut, index + 1, a) }
-  }
-
-  def testSpecialCases(dut: FpConvert) = {
-    val specialCases =
-      Seq(0.0f, 1.0f, Float.NaN, Float.PositiveInfinity, Float.NegativeInfinity, Float.MinPositiveValue)
-
-    specialCases.zipWithIndex.foreach { case (a, index) => testSingle(dut, index + 1, a) }
-  }
-
-  it should "convert BF16 to FP8_ALT correctly" in {
-    test(new FpConvert(typeA = BF16, typeC = FP8_ALT))
-      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAllConvert(dut) }
-  }
-
-  it should "convert FP8_ALT to BF16 correctly" in {
-    test(new FpConvert(typeA = FP8_ALT, typeC = BF16))
-      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAllConvert(dut) }
-  }
-
-  it should "convert FP32 to FP32 correctly" in {
-    test(new FpConvert(typeA = FP32, typeC = FP32))
-      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAllConvert(dut) }
-  }
-
-  it should "convert FP16 to FP16 correctly" in {
-    test(new FpConvert(typeA = FP16, typeC = FP16))
-      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAllConvert(dut) }
-  }
-
-  it should "convert FP8 to BF16 correctly" in {
-    test(new FpConvert(typeA = FP8, typeC = BF16))
-      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAllConvert(dut) }
-  }
-  it should "convert FP16 to FP32 correctly" in {
-    test(new FpConvert(typeA = FP16, typeC = FP32))
-      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAllConvert(dut) }
-  }
-
-  it should "convert FP32 to FP16 correctly" in {
-    test(new FpConvert(typeA = FP32, typeC = FP16))
-      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAllConvert(dut) }
-  }
-
-  it should "convert BF16 to FP32 correctly" in {
-    test(new FpConvert(typeA = BF16, typeC = FP32))
-      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAllConvert(dut) }
-  }
-
-  it should "convert BF16 to BF16 correctly" in {
-    test(new FpConvert(typeA = BF16, typeC = BF16))
-      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAllConvert(dut) }
-  }
-
-  it should "convert FP32 to BF16 correctly" in {
-    test(new FpConvert(typeA = FP32, typeC = BF16))
-      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAllConvert(dut) }
-  }
-
-  // Special cases
-  it should "handle special cases in FP16 to FP32" in {
-    test(new FpConvert(typeA = FP16, typeC = FP32))
-      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testSpecialCases(dut) }
-  }
-
-  it should "handle special cases in FP32 to FP16" in {
-    test(new FpConvert(typeA = FP32, typeC = FP16))
-      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testSpecialCases(dut) }
-  }
-
-  it should "handle special cases in FP32 to BF16" in {
-    test(new FpConvert(typeA = FP32, typeC = BF16))
-      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testSpecialCases(dut) }
-  }
-
-  it should "convert FP8 to FP8 correctly" in {
-    test(new FpConvert(typeA = FP8, typeC = FP8))
-      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAllConvert(dut) }
-  }
-
-  it should "convert FP8 to FP16 correctly" in {
-    test(new FpConvert(typeA = FP8, typeC = FP16))
-      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAllConvert(dut) }
-  }
-
-  it should "convert FP8 to FP32 correctly" in {
-    test(new FpConvert(typeA = FP8, typeC = FP32))
-      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAllConvert(dut) }
-  }
-
-  it should "convert FP16 to FP8 correctly" in {
-    test(new FpConvert(typeA = FP16, typeC = FP8))
-      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAllConvert(dut) }
-  }
-
-  it should "convert FP32 to FP8 correctly" in {
-    test(new FpConvert(typeA = FP32, typeC = FP8))
-      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testAllConvert(dut) }
-  }
-
-  // Special case tests for FP8
-  it should "handle special cases in FP8 to FP16" in {
-    test(new FpConvert(typeA = FP8, typeC = FP16))
-      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testSpecialCases(dut) }
-  }
-
-  it should "handle special cases in FP8 to FP32" in {
-    test(new FpConvert(typeA = FP8, typeC = FP32))
-      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testSpecialCases(dut) }
-  }
-
-  it should "handle special cases in FP16 to FP8" in {
-    test(new FpConvert(typeA = FP16, typeC = FP8))
-      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testSpecialCases(dut) }
-  }
-
-  it should "handle special cases in FP32 to FP8" in {
-    test(new FpConvert(typeA = FP32, typeC = FP8))
-      .withAnnotations(Seq(VcsBackendAnnotation, WriteVcdAnnotation)) { dut => testSpecialCases(dut) }
+  for ((tA, tC) <- pairs) {
+    val label = s"${name(tA)} -> ${name(tC)}"
+    it should s"match the reference model bit-exactly for $label" in {
+      test(new FpConvert(tA, tC)).withAnnotations(FpTestConfig.annotations) { dut =>
+        sweep(s"FpConvert $label", Seq(tA), tC, stimulus(tA, tC)) { v =>
+          dut.io.in_a.poke(v(0).U)
+          dut.io.out.peek().litValue
+        } { v => FpReference.convert(tA, tC, v(0)) }
+      }
+    }
   }
 }

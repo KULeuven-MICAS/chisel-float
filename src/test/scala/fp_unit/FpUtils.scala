@@ -337,8 +337,8 @@ trait FpUtils {
     if (typeA.isIEEE754 && typeB.isIEEE754 && typeC.isIEEE754) mulExact(a, b, typeA, typeB, typeC)
     else (a, typeA) * (b, typeB)
 
-  /** Exact add: a+b rounded once with RNE to `typeC`, with IEEE addition semantics for the sign of zero. IEEE 754
-    * types only. Verified in FpGoldenVectorTest.
+  /** Exact add: a+b rounded once with RNE to `typeC`, with IEEE addition semantics for the sign of zero. IEEE 754 types
+    * only. Verified in FpGoldenVectorTest.
     */
   def addExact(a: Float, b: Float, typeA: FpType, typeB: FpType, typeC: FpType): Float = {
     require(typeA.isIEEE754 && typeB.isIEEE754 && typeC.isIEEE754, "addExact only supports IEEE 754 types")
@@ -363,7 +363,8 @@ trait FpUtils {
     out(roundExactRNE(typeC.expWidth, typeC.sigWidth, if (sum < 0) 1 else 0, sum.abs, e0))
   }
 
-  /** Software model of the hardware adder for any FpType combination: addExact for IEEE 754 types, float-based fallback for non-IEEE types (FP8_ALT).
+  /** Software model of the hardware adder for any FpType combination: addExact for IEEE 754 types, float-based fallback
+    * for non-IEEE types (FP8_ALT).
     */
   def addHardware(a: Float, b: Float, typeA: FpType, typeB: FpType, typeC: FpType): Float =
     if (typeA.isIEEE754 && typeB.isIEEE754 && typeC.isIEEE754) addExact(a, b, typeA, typeB, typeC)
@@ -371,7 +372,6 @@ trait FpUtils {
 
   /** Same-format add, the common case in accelerator datapaths. */
   def addHardware(a: Float, b: Float, fpType: FpType): Float = addHardware(a, b, fpType, fpType, fpType)
-
 
   /** Decode IEEE bits to (sign, significand, scale) with value = (-1)^sign * mant * 2^scale, or Left(special). */
   private def decodeIEEEBits(t: FpType, bits: BigInt): Either[String, (Int, BigInt, Int)] = {

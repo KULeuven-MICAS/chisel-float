@@ -1,6 +1,7 @@
 // Copyright 2025 KU Leuven.
-// KU Leuven confidential. Do not distribute.
-//
+// Solderpad Hardware License, Version 0.51, see LICENSE for details.
+// SPDX-License-Identifier: SHL-0.51
+
 // Author: Robin Geens <robin.geens@kuleuven.be>
 
 package fp_unit

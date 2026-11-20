@@ -13,129 +13,138 @@ import java.util.zip.GZIPInputStream
 import scala.io.Source
 
 import org.scalatest.flatspec.AnyFlatSpec
-import org.scalatest.matchers.should.Matchers
 
-/** Verifies the software references fmaExact, mulExact and addExact against golden
-  * vectors produced by MPFR (an external, independently validated IEEE-754 oracle)
-  */
-class FpGoldenVectorTest extends AnyFlatSpec with Matchers with FpUtils {
-  behavior of "fmaExact/mulExact/addExact vs MPFR golden vectors"
+/** Checks the software reference models against MPFR golden vectors (`pixi run golden`). */
+class FpGoldenVectorTest extends AnyFlatSpec with FpUtils {
+  behavior of "The software reference models (vs. MPFR golden vectors)"
 
-  private def isNaNBits(t: FpType, bits: BigInt): Boolean = {
-    val expAllOnes = (1 << t.expWidth) - 1
-    ((bits >> t.sigWidth) & expAllOnes) == expAllOnes && (bits & ((BigInt(1) << t.sigWidth) - 1)) != 0
-  }
+  private val required = sys.env.get("FP_GOLDEN_REQUIRED").exists(v => v == "1" || v.equalsIgnoreCase("true"))
 
-  /** Vectors live in generated/fp_golden. Resolve the root regardless of whether tests run from chisel-float itself or
-    * from a parent project.
-    */
-  private def loadVectors(name: String): Iterator[Array[BigInt]] = {
+  /** Vectors live in generated/fp_golden; also resolve them when the tests run from a parent project. */
+  private def loadVectors(file: String): Iterator[Array[BigInt]] = {
     val candidates = Seq("generated/fp_golden", "chisel-float/generated/fp_golden", "../generated/fp_golden")
-    val file       = candidates.map(d => new File(d, name)).find(_.isFile).getOrElse {
-      cancel(s"Missing generated/fp_golden/$name. run: python3 src/test/resources/gen_fp_golden_vectors.py")
+    val found      = candidates.map(d => new File(d, file)).find(_.isFile)
+    if (found.isEmpty) {
+      val msg = s"missing generated/fp_golden/$file: run `pixi run golden`"
+      if (required) fail(msg) else cancel(msg)
     }
     Source
-      .fromInputStream(new GZIPInputStream(new FileInputStream(file)))
+      .fromInputStream(new GZIPInputStream(new FileInputStream(found.get)))
       .getLines()
       .filterNot(l => l.startsWith("#") || l.isEmpty)
       .map(_.split(" ").map(BigInt(_, 16)))
   }
 
-  /** Compare `result` (already in tC bits) against expected bits; NaN compared as a class. */
-  private def matches(tC: FpType, resultBits: BigInt, expectedBits: BigInt): Boolean =
-    if (isNaNBits(tC, expectedBits)) isNaNBits(tC, resultBits) else resultBits == expectedBits
+  private def typeName(t: FpType) = t.getClass.getSimpleName.stripSuffix("$")
 
-  private def checkFma(tA: FpType, tB: FpType, tC: FpType, name: String): Unit = {
-    var total = 0; var mism = 0; var shown = 0
-    for (Array(aB, bB, cB, expB) <- loadVectors(s"fma_${name}.txt.gz")) {
-      val a    = uintToFloat(tA, aB); val b = uintToFloat(tB, bB); val c = uintToFloat(tC, cB)
-      val resB = floatToUInt(tC, fmaExact(a, b, c, tA, tB, tC))
+  /** Checks every vector (operands..., expected) against each of the given models. */
+  private def check(file: String, outType: FpType, models: (String, Seq[BigInt] => BigInt)*): Unit = {
+    var total = 0
+    val bad   = scala.collection.mutable.Map.empty[String, Int].withDefaultValue(0)
+    val shown = scala.collection.mutable.ArrayBuffer.empty[String]
+    for (vec <- loadVectors(file)) {
+      val ops      = vec.init.toSeq
+      val expected = vec.last
       total += 1
-      if (!matches(tC, resB, expB)) {
-        mism += 1
-        if (shown < 20) {
-          println(
-            f"MISMATCH $name a=0x$aB%04x b=0x$bB%04x c=0x$cB%04x mpfr=0x$expB%04x got=0x$resB%04x " +
-              f"($a%.8g * $b%.8g + $c%.8g)"
-          )
-          shown += 1
+      for ((model, f) <- models) {
+        val got = f(ops)
+        if (got != expected) {
+          bad(model) += 1
+          if (shown.size < 20)
+            shown += s"$model ${ops.map(_.toString(16)).mkString(" ")}: mpfr=${FpReference.describe(outType, expected)} " +
+              s"got=${FpReference.describe(outType, got)}"
         }
       }
     }
-    println(s"fmaExact $name: $mism / $total mismatches vs MPFR")
-    assert(mism == 0)
+    val summary = models.map { case (m, _) => s"$m: ${bad(m)} / $total mismatches" }.mkString(", ")
+    println(s"$file: $summary")
+    info(summary)
+    assert(total > 0, s"$file contains no vectors: regenerate it with `pixi run golden`")
+    assert(bad.values.sum == 0, (summary +: shown).mkString("\n"))
   }
 
-  private def checkMul(tA: FpType, tB: FpType, tC: FpType, name: String): Unit = {
-    var total = 0; var mism = 0; var shown = 0
-    for (Array(aB, bB, expB) <- loadVectors(s"mul_${name}.txt.gz")) {
-      val a    = uintToFloat(tA, aB); val b = uintToFloat(tB, bB)
-      val resB = floatToUInt(tC, mulExact(a, b, tA, tB, tC))
-      total += 1
-      if (!matches(tC, resB, expB)) {
-        mism += 1
-        if (shown < 20) {
-          println(f"MISMATCH $name a=0x$aB%04x b=0x$bB%04x mpfr=0x$expB%04x got=0x$resB%04x ($a%.8g * $b%.8g)")
-          shown += 1
-        }
-      }
-    }
-    println(s"mulExact $name: $mism / $total mismatches vs MPFR")
-    assert(mism == 0)
-  }
+  private def bitsOf(t: FpType, f: Float):  BigInt = floatToUInt(t, f)
+  private def valOf(t:  FpType, b: BigInt): Float  = uintToFloat(t, b)
 
-  /** addExact (and addHardware, which dispatches to it for IEEE types) must match MPFR bit-exactly, including signed
-    * zeros; NaN is compared as a class.
-    */
-  private def checkAdd(tA: FpType, tB: FpType, tC: FpType, name: String): Unit = {
-    var total = 0; var mism = 0; var shown = 0
-    for (Array(aB, bB, expB) <- loadVectors(s"add_${name}.txt.gz")) {
-      val a    = uintToFloat(tA, aB); val b = uintToFloat(tB, bB)
-      val resB = floatToUInt(tC, addExact(a, b, tA, tB, tC))
-      total += 1
-      if (!matches(tC, resB, expB)) {
-        mism += 1
-        if (shown < 20) {
-          println(f"MISMATCH addExact $name a=0x$aB%08x b=0x$bB%08x mpfr=0x$expB%08x got=0x$resB%08x"); shown += 1
-        }
-      }
-    }
-    println(s"addExact $name: $mism / $total mismatches vs MPFR")
-    assert(mism == 0)
-  }
-
-  val combos = Seq(
+  val fmaCombos = Seq(
     (BF16, BF16, BF16),
     (FP16, FP16, FP16),
     (FP32, FP32, FP32),
+    (FP8, FP8, FP8),
     (BF16, FP16, BF16),
     (FP16, BF16, FP16),
     (FP16, FP16, FP32),
-    (BF16, BF16, FP32)
+    (BF16, BF16, FP32),
+    (FP8, FP16, FP16),
+    (FP32, FP32, FP8)
   )
-
-  def name(t: FpType): String = t.getClass.getSimpleName.stripSuffix("$")
 
   val addCombos = Seq(
     (BF16, BF16, BF16),
     (FP16, FP16, FP16),
     (FP32, FP32, FP32),
+    (FP8, FP8, FP8),
     (FP16, FP32, FP32),
     (BF16, BF16, FP32),
     (FP16, FP16, FP32),
     (FP16, FP32, FP16), // narrowing
     (FP32, FP16, BF16), // narrowing
-    (FP32, FP32, FP16)  // narrowing
+    (FP32, FP32, FP16), // narrowing
+    (FP16, FP16, FP8)   // narrowing
   )
 
-  for ((tA, tB, tC) <- combos) {
-    val n = s"${name(tA)}_${name(tB)}_${name(tC)}"
-    it should s"match MPFR for fmaExact ${name(tA)}*${name(tB)}+${name(tC)}" in checkFma(tA, tB, tC, n)
-    it should s"match MPFR for mulExact ${name(tA)}*${name(tB)}->${name(tC)}" in checkMul(tA, tB, tC, n)
+  val ieeeTypes = Seq(FP32, FP16, BF16, FP8)
+
+  for ((tA, tB, tC) <- fmaCombos) {
+    val n = s"${typeName(tA)}_${typeName(tB)}_${typeName(tC)}"
+    it should s"match MPFR for fma ${typeName(tA)}*${typeName(tB)}+${typeName(tC)}" in {
+      check(
+        s"fma_$n.txt.gz",
+        tC,
+        "FpReference.fma"  -> (v => FpReference.fma(tA, tB, tC, v(0), v(1), v(2))),
+        "FpUtils.fmaExact" -> (v => bitsOf(tC, fmaExact(valOf(tA, v(0)), valOf(tB, v(1)), valOf(tC, v(2)), tA, tB, tC)))
+      )
+    }
+    it should s"match MPFR for mul ${typeName(tA)}*${typeName(tB)}->${typeName(tC)}" in {
+      check(
+        s"mul_$n.txt.gz",
+        tC,
+        "FpReference.mul"  -> (v => FpReference.mul(tA, tB, tC, v(0), v(1))),
+        "FpUtils.mulExact" -> (v => bitsOf(tC, mulExact(valOf(tA, v(0)), valOf(tB, v(1)), tA, tB, tC)))
+      )
+    }
   }
 
   for ((tA, tB, tC) <- addCombos) {
-    val n = s"${name(tA)}_${name(tB)}_${name(tC)}"
-    it should s"match MPFR for addExact ${name(tA)}+${name(tB)}->${name(tC)}" in checkAdd(tA, tB, tC, n)
+    val n = s"${typeName(tA)}_${typeName(tB)}_${typeName(tC)}"
+    it should s"match MPFR for add ${typeName(tA)}+${typeName(tB)}->${typeName(tC)}" in {
+      check(
+        s"add_$n.txt.gz",
+        tC,
+        "FpReference.add"  -> (v => FpReference.add(tA, tB, tC, v(0), v(1))),
+        "FpUtils.addExact" -> (v => bitsOf(tC, addExact(valOf(tA, v(0)), valOf(tB, v(1)), tA, tB, tC)))
+      )
+    }
+  }
+
+  for {
+    tA <- ieeeTypes
+    tC <- ieeeTypes if tA != tC
+  } {
+    it should s"match MPFR for convert ${typeName(tA)}->${typeName(tC)}" in {
+      check(
+        s"cvt_${typeName(tA)}_${typeName(tC)}.txt.gz",
+        tC,
+        "FpReference.convert" -> (v => FpReference.convert(tA, tC, v(0))),
+        "FpUtils.floatToUInt" -> (v => bitsOf(tC, valOf(tA, v(0))))
+      )
+    }
+  }
+
+  for (t <- Seq(BF16, FP16, FP32)) {
+    it should s"match MPFR for div and sqrt in ${typeName(t)}" in {
+      check(s"div_${typeName(t)}.txt.gz", t, "FpReference.div"   -> (v => FpReference.div(t, v(0), v(1))))
+      check(s"sqrt_${typeName(t)}.txt.gz", t, "FpReference.sqrt" -> (v => FpReference.sqrt(t, v(0))))
+    }
   }
 }

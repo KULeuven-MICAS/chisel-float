@@ -6,7 +6,7 @@
 // Copyright 2025 KU Leuven
 // Modified by: Robin Geens <robin.geens@kuleuven.be>
 
-// For now, this is implemented as a multiplication with constant 1 (exp=BIAS_IN, mantissa=1).
+// Converts between IEEE 754 formats, rounding to nearest, ties to even. NaNs become the canonical quiet NaN.
 module fp_convert #(
     parameter fpnew_pkg_snax::fp_format_e FpFormat_in  = fpnew_pkg_snax::fp_format_e'(2),  //FP16 
     parameter fpnew_pkg_snax::fp_format_e FpFormat_out = fpnew_pkg_snax::fp_format_e'(0),  //FP32
@@ -38,11 +38,8 @@ module fp_convert #(
   localparam int unsigned PRECISION_BITS_A = MAN_BITS_A + 1;
   localparam int unsigned PRECISION_BITS_C = MAN_BITS_C + 1;
 
-  localparam int unsigned MUL_WIDTH = 2 * PRECISION_BITS_A;
-  localparam int unsigned LZC_RESULT_WIDTH = $clog2(MUL_WIDTH);
-  localparam int unsigned EXP_WIDTH = unsigned'(fpnew_pkg_snax::maximum(
-      fpnew_pkg_snax::maximum(EXP_BITS_C, EXP_BITS_A) + 2, LZC_RESULT_WIDTH
-  ));
+  // Holds every biased output exponent, including those of subnormal inputs and of results that overflow
+  localparam int unsigned EXP_WIDTH = fpnew_pkg_snax::maximum(EXP_BITS_C, EXP_BITS_A) + 2;
 
   // ----------------
   // Type definition
@@ -87,20 +84,9 @@ module fp_convert #(
 
   // Input classification
   // ---------------------
-  logic any_operand_inf;
-  logic any_operand_nan;
-  logic signalling_nan;
-  logic effective_subtraction;
-  logic tentative_sign;
-
-  // Reduction for special case handling
-  assign any_operand_inf = info_a.is_inf;
-  assign any_operand_nan = info_a.is_nan;
-  assign signalling_nan  = info_a.is_signalling;
-
   logic result_sign;
+  assign result_sign = operand_a.sign;
 
-  assign result_sign = operand_a.sign ^ 0;
   // ----------------------
   // Special case handling
   // ----------------------
@@ -112,110 +98,102 @@ module fp_convert #(
     special_result = '{sign: 1'b0, exponent: '1, mantissa: 2 ** (MAN_BITS_C - 1)};  // canonical qNaN
     result_is_special = 1'b0;
 
-    if (any_operand_nan) begin
+    if (info_a.is_nan) begin
+      // Any NaN becomes the canonical quiet NaN
       result_is_special = 1'b1;
-    end else if (any_operand_inf) begin
+    end else if (info_a.is_inf) begin
+      // Infinity keeps its sign
       result_is_special = 1'b1;
-      if ((info_a.is_inf) && effective_subtraction)
-        special_result = '{sign: 1'b0, exponent: '1, mantissa: 2 ** (MAN_BITS_C - 1)};
-      else if (info_a.is_inf) begin
-        special_result = '{sign: operand_a.sign ^ 0, exponent: '1, mantissa: '0};
-      end
+      special_result = '{sign: operand_a.sign, exponent: '1, mantissa: '0};
     end
   end
 
+
+  // -----------------------------------------------
+  // Input mantissa normalization (subnormal inputs)
+  // -----------------------------------------------
+  // Shift the leading one of a subnormal mantissa up to the hidden-bit position
+  logic [        PRECISION_BITS_A-1:0] mantissa_a_raw;
+  logic [        PRECISION_BITS_A-1:0] mantissa_a;
+  logic [$clog2(PRECISION_BITS_A)-1:0] lzc_a;
+
+  assign mantissa_a_raw = {info_a.is_normal, operand_a.mantissa};
+
+  lzc_snax #(
+      .WIDTH(PRECISION_BITS_A),
+      .MODE (1)                  // MODE = 1 counts leading zeroes
+  ) i_lzc_mantissa_a (
+      .in_i   (mantissa_a_raw),
+      .cnt_o  (lzc_a),
+      .empty_o()
+  );
+
+  assign mantissa_a = mantissa_a_raw << lzc_a;
 
   // ---------------------------
   // Initial exponent data path
   // ---------------------------
-  // TODO needs extra bit for signed?
-  logic signed [EXP_BITS_A-1:0] exponent_a;
-  logic signed [ EXP_WIDTH-1:0] exponent_product;
-
+  logic signed [ EXP_BITS_A:0] exponent_a;
+  logic signed [EXP_WIDTH-1:0] exponent_product;  // biased in the output format, of the mantissa_a MSB
 
   assign exponent_a = signed'({1'b0, operand_a.exponent});
 
-  assign exponent_product = (info_a.is_zero) ? 2 - signed'(BIAS_C)  // [NOTE]
-      : signed'(exponent_a + info_a.is_subnormal - signed'(BIAS_A) + signed'(BIAS_C));
-
-  // ------------------
-  // Product data path
-  // ------------------
-  logic [PRECISION_BITS_A-1:0] mantissa_a;
-  logic [MUL_WIDTH-1:0] product;
-
-  // Add implicit bits to mantissa
-  assign mantissa_a = {info_a.is_normal, operand_a.mantissa};
-
-  // Mantissa multiplier (a*b)
-  assign product = mantissa_a << MAN_BITS_A;
+  assign exponent_product = (info_a.is_zero) ? 2 - signed'(BIAS_C)
+      : signed'(exponent_a + info_a.is_subnormal - signed'({1'b0, lzc_a}) - signed'(BIAS_A) + signed'(BIAS_C));
 
   // --------------
   // Normalization
   // --------------
-  localparam int unsigned PRODUCT_SHIFTED_WIDTH = MUL_WIDTH + 1;  // Must have 1 bit more than product
-  localparam int STICKY_BIT_WIDTH = PRODUCT_SHIFTED_WIDTH - (PRECISION_BITS_C + 1);
-  localparam int unsigned PADDING_WIDTH = (STICKY_BIT_WIDTH <= 0) ? -STICKY_BIT_WIDTH : 0;
+  // The window holds the full input mantissa plus the output mantissa+round positions, with >= 2 sticky bits
+  localparam int unsigned NORM_WIDTH =
+      ((PRECISION_BITS_A > PRECISION_BITS_C + 1) ? PRECISION_BITS_A : (PRECISION_BITS_C + 1)) + 2;
+  localparam int unsigned STICKY_BIT_WIDTH = NORM_WIDTH - (PRECISION_BITS_C + 1);  // >= 2 by construction
+  localparam int unsigned DENORM_SHAMT_WIDTH = $clog2(NORM_WIDTH + 1);
 
-  logic        [     LZC_RESULT_WIDTH-1:0] leading_zero_count;  // the number of leading zeroes
-  logic signed [       LZC_RESULT_WIDTH:0] leading_zero_count_sgn;  // signed leading-zero count
-  logic                                    lzc_zeroes;
+  logic signed [       EXP_WIDTH-1:0] normalized_exponent;
+  logic signed [       EXP_WIDTH-1:0] final_exponent;
+  logic        [      NORM_WIDTH-1:0] mantissa_aligned;  // mantissa_a MSB at the window top
+  logic        [      NORM_WIDTH-1:0] mantissa_shifted;
+  logic        [  PRECISION_BITS_C:0] final_mantissa;
+  logic        [STICKY_BIT_WIDTH-1:0] sum_sticky_bits;
+  logic                               sticky_after_norm;
+  logic                               denorm_sticky;
 
-  logic signed [            EXP_WIDTH-1:0] normalized_exponent;
-  logic signed [            EXP_WIDTH-1:0] final_exponent;
-  logic        [PRODUCT_SHIFTED_WIDTH-1:0] product_shifted;
-  logic        [       PRECISION_BITS_C:0] final_mantissa;
-  /* verilator lint_off ASCRANGE */
-  // When STICKY_BIT_WIDTH < 0, the range will be inverted, triggering an error, but the vector will not used
-  logic        [     STICKY_BIT_WIDTH-1:0] sum_sticky_bits;
-  /* verilator lint_on ASCRANGE */
-  logic                                    sticky_after_norm;
+  assign mantissa_aligned = {mantissa_a, {(NORM_WIDTH - PRECISION_BITS_A) {1'b0}}};
 
+  // Subnormal results: shift right by 1 - exponent_product (clamped); dropped bits join the sticky bit
+  logic signed [         EXP_WIDTH-1:0] denorm_shift;
+  logic        [DENORM_SHAMT_WIDTH-1:0] denorm_shamt;
+  logic        [        NORM_WIDTH-1:0] denorm_kept;
+  logic        [        NORM_WIDTH-1:0] denorm_dropped;
 
-
-  // For normal case, the mantissa's start with 1 (by definition) so the product has either 0 or 1 leading zero's
-  // For subnormal case, any number of leading zero's is possible
-  lzc_snax #(
-      .WIDTH(MUL_WIDTH),
-      .MODE (1)           // MODE = 1 counts leading zeroes
-  ) i_lzc (
-      .in_i   (product),
-      .cnt_o  (leading_zero_count),
-      .empty_o(lzc_zeroes)
-  );
-  assign leading_zero_count_sgn = signed'({1'b0, leading_zero_count});
+  assign denorm_shift = 1 - exponent_product;  // >= 1 whenever the subnormal branch is taken
+  assign denorm_shamt = (denorm_shift <= 0) ? '0
+      : (denorm_shift >= signed'(NORM_WIDTH)) ? DENORM_SHAMT_WIDTH'(NORM_WIDTH)
+      : denorm_shift[DENORM_SHAMT_WIDTH-1:0];
+  assign {denorm_kept, denorm_dropped} = {mantissa_aligned, {NORM_WIDTH{1'b0}}} >> denorm_shamt;
 
   always_comb begin : norm_shift_amount
-    if ((exponent_product - leading_zero_count_sgn + 1 > 0) && !lzc_zeroes) begin
-      normalized_exponent = exponent_product - leading_zero_count_sgn + 1;  // Account for LZC shift
-      // Account for 1 bit wider result. Cancel out leading zeros. Mantissa's hidden bit will now be at MSB
-      product_shifted = product << (leading_zero_count + 1);
+    if ((exponent_product > 0) && !info_a.is_zero) begin
+      // Normal result: the hidden bit is already at the window MSB
+      normalized_exponent = exponent_product;
+      mantissa_shifted = mantissa_aligned;
+      denorm_sticky = 1'b0;
     end else begin
-      // Subnormal result. Exponent is 0
+      // Subnormal (or zero) result. Exponent is 0
       normalized_exponent = 0;
-      // Align mantissa with minimum exponent. Mantissa MSB must not be discarded later: subnormals have no hidden bit
-      // exponent_product can still be positive here when a subnormal input has more leading zeros than the exponent
-      // can absorb (lzc > exponent_product); a negated positive value would wrap as an unsigned shift amount.
-      if (exponent_product > 0) product_shifted = (product << 1) << unsigned'(exponent_product);
-      else product_shifted = (product << 1) >> unsigned'(-exponent_product);
+      mantissa_shifted = denorm_kept;
+      denorm_sticky = |denorm_dropped;
     end
   end
 
-
   always_comb begin : small_norm
-    // If src is wider than dst: save LSBs in sticky bits
-    if (STICKY_BIT_WIDTH > 0) {final_mantissa, sum_sticky_bits} = product_shifted;
-    // If src is narrower than dst: append 0 at LSBs
-    else begin
-      final_mantissa  = {product_shifted, {(PADDING_WIDTH) {1'b0}}};
-      sum_sticky_bits = 1'b0;
-    end
-
+    {final_mantissa, sum_sticky_bits} = mantissa_shifted;
     final_exponent = normalized_exponent;
   end
 
   // Update the sticky bit with the shifted-out bits
-  assign sticky_after_norm = (|sum_sticky_bits);
+  assign sticky_after_norm = (|sum_sticky_bits) | denorm_sticky;
 
   // ----------------------------
   // Rounding and classification
@@ -255,7 +233,7 @@ module fp_convert #(
       .sign_i                 (pre_round_sign),
       .round_sticky_bits_i    (round_sticky_bits),
       .rnd_mode_i             (fpnew_pkg_snax::RNE),
-      .effective_subtraction_i(1'b0),                 // pure mul, no subtraction
+      .effective_subtraction_i(1'b0),                 // no subtraction
       .abs_rounded_o          (rounded_abs),
       .sign_o                 (rounded_sign),
       .exact_zero_o           (result_zero)

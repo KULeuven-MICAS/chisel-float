@@ -1,5 +1,6 @@
 // Copyright 2025 KU Leuven.
-// KU Leuven confidential. Do not distribute.
+// Solderpad Hardware License, Version 0.51, see LICENSE for details.
+// SPDX-License-Identifier: SHL-0.51
 //
 // Author: Robin Geens <robin.geens@kuleuven.be>
 
@@ -9,7 +10,6 @@ import chisel3._
 import chisel3.experimental.RawParam
 import chisel3.util._
 
-/** TODO separate output format is not supported yet */
 class FpFmaBlackBox(modulename: String, typeA: FpType, typeB: FpType, typeC: FpType)
     extends BlackBox(
       Map(
@@ -19,6 +19,11 @@ class FpFmaBlackBox(modulename: String, typeA: FpType, typeB: FpType, typeC: FpT
       )
     )
     with HasBlackBoxResource {
+
+  require(
+    typeA.isIEEE754 && typeB.isIEEE754 && typeC.isIEEE754,
+    s"FpFmaFp supports IEEE 754 formats only, got $typeA x $typeB + $typeC"
+  )
 
   val io = IO(new Bundle {
     val operand_a_i = Input(UInt(typeA.W))
@@ -36,9 +41,8 @@ class FpFmaBlackBox(modulename: String, typeA: FpType, typeB: FpType, typeC: FpT
 
 }
 
-class FpFmaFp(val typeA: FpType, val typeB: FpType, val typeC: FpType, modulename: String = "fp_fma")
-    extends Module
-    with RequireAsyncReset {
+/** Combinational fused multiply-add: out = in_a * in_b + in_c, rounded once into typeC, the format of in_c. */
+class FpFmaFp(val typeA: FpType, val typeB: FpType, val typeC: FpType, modulename: String = "fp_fma") extends Module {
 
   val outType = typeC
 
@@ -58,8 +62,5 @@ class FpFmaFp(val typeA: FpType, val typeB: FpType, val typeC: FpType, modulenam
 }
 
 object FpFmaFpEmitter extends App {
-  emitVerilog(
-    new FpFmaFp(typeA = BF16, typeB = BF16, typeC = BF16),
-    Array("--target-dir", "generated/fp_unit")
-  )
+  FpEmitter(new FpFmaFp(typeA = BF16, typeB = BF16, typeC = BF16), "FpFmaFp")
 }

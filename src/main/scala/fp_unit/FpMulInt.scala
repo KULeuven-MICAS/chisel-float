@@ -9,18 +9,24 @@ package fp_unit
 import chisel3._
 import chisel3.util._
 
-/** @param typeA
-  *   Must be FP16
-  * @param typeB
-  *   Configurable
-  * @param typeC
-  *   Must be FP32
-  */
+object FpMulInt {
+  val maxIntWidth = 11
+
+  def checkTypes(typeA: FpType, typeB: IntType, typeC: FpType): Unit = {
+    require(typeA == FP16, s"FpMulInt: operand A must be FP16, got $typeA")
+    require(typeC == FP32, s"FpMulInt: the result must be FP32, got $typeC")
+    require(
+      typeB.width >= 1 && typeB.width <= maxIntWidth,
+      s"FpMulInt: the integer width must be 1 to $maxIntWidth bits, got ${typeB.width}"
+    )
+  }
+}
+
 class FpMulIntBlackBox(topmodule: String, typeA: FpType = FP16, typeB: IntType, typeC: FpType = FP32)
     extends BlackBox(Map("WIDTH_B" -> typeB.width))
     with HasBlackBoxResource {
 
-  require(typeA == FP16 && typeC == FP32, "FpMulInt only supports FP16*Int->FP32")
+  FpMulInt.checkTypes(typeA, typeB, typeC)
 
   val io = IO(new Bundle {
     val operand_a_i = Input(UInt(typeA.width.W))
@@ -31,15 +37,16 @@ class FpMulIntBlackBox(topmodule: String, typeA: FpType = FP16, typeB: IntType, 
 
   addResource("common_block/fpnew_pkg_snax.sv")
   addResource("common_block/fpnew_classifier.sv")
-  addResource("common_block/fpnew_rounding.sv")
   addResource("common_block/lzc.sv")
   addResource("common_block/int2fp.sv")
   addResource("fp_mul_int.sv")
 }
 
+/** Exact FP16 x signed integer (1 to 11 bits) -> FP32. A 1-bit integer is bipolar: 1 is +1 and 0 is -1. */
 class FpMulInt(val typeA: FpType = FP16, val typeB: IntType, val typeC: FpType = FP32, topmodule: String = "fp_mul_int")
-    extends Module
-    with RequireAsyncReset {
+    extends Module {
+
+  FpMulInt.checkTypes(typeA, typeB, typeC)
 
   override def desiredName: String = "FpMulInt_" + topmodule
 
@@ -58,8 +65,5 @@ class FpMulInt(val typeA: FpType = FP16, val typeB: IntType, val typeC: FpType =
 }
 
 object FpMulIntEmitter extends App {
-  emitVerilog(
-    new FpMulInt(topmodule = "fp_mul_int", typeB = Int16),
-    Array("--target-dir", "generated/fp_unit")
-  )
+  FpEmitter(new FpMulInt(topmodule = "fp_mul_int", typeB = Int8), "FpMulInt")
 }

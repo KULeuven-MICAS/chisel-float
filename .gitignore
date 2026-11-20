@@ -4,8 +4,19 @@ test_run_dir
 .bloop
 generated
 .vscode
-project
-!project/plugins.sbt
+/project/*
+!/project/plugins.sbt
+!/project/build.properties
+
+### Simulators (VCS artifacts, in case it runs outside test_run_dir)
+ucli.key
+csrc/
+simv*
+*.vpd
+*.fsdb
+*.vcd
+DVEfiles/
+vc_hdrs.h
 
 
 ### XilinxISE template

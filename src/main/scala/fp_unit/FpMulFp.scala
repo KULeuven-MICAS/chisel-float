@@ -21,6 +21,11 @@ class FpMulFpBlackBox(typeA: FpType, typeB: FpType, typeC: FpType)
     )
     with HasBlackBoxResource {
 
+  require(
+    typeA.isIEEE754 && typeB.isIEEE754 && typeC.isIEEE754,
+    s"fp_mul supports IEEE 754 formats only, got $typeA x $typeB -> $typeC"
+  )
+
   val io = IO(new Bundle {
     val operand_a_i = Input(UInt(typeA.W))
     val operand_b_i = Input(UInt(typeB.W))
@@ -36,7 +41,6 @@ class FpMulFpBlackBox(typeA: FpType, typeB: FpType, typeC: FpType)
 
 }
 
-/** For non-IEEE 754 compliant input multiplication with IEEE754-compliant output. */
 class FpMulFpAltToIEEEBlackBox(typeA: FpType, typeB: FpType, typeC: FpType)
     extends BlackBox(
       Map(
@@ -46,7 +50,10 @@ class FpMulFpAltToIEEEBlackBox(typeA: FpType, typeB: FpType, typeC: FpType)
       )
     )
     with HasBlackBoxResource {
-  require(!typeA.isIEEE754 && !typeB.isIEEE754 && typeC.isIEEE754)
+  require(
+    !typeA.isIEEE754 && !typeB.isIEEE754 && typeC.isIEEE754,
+    s"fp_mul_alt needs non-IEEE 754 operands and an IEEE 754 result, got $typeA x $typeB -> $typeC"
+  )
 
   val io = IO(new Bundle {
     val operand_a_i = Input(UInt(typeA.W))
@@ -63,7 +70,6 @@ class FpMulFpAltToIEEEBlackBox(typeA: FpType, typeB: FpType, typeC: FpType)
 
 }
 
-/** For non-IEEE 754 compliant input multiplication with non-IEEE754-compliant output. */
 class FpMulFpAltToAltBlackBox(typeA: FpType, typeB: FpType, typeC: FpType)
     extends BlackBox(
       Map(
@@ -74,7 +80,10 @@ class FpMulFpAltToAltBlackBox(typeA: FpType, typeB: FpType, typeC: FpType)
     )
     with HasBlackBoxResource {
 
-  require(!typeA.isIEEE754 && !typeB.isIEEE754 && !typeC.isIEEE754)
+  require(
+    !typeA.isIEEE754 && !typeB.isIEEE754 && !typeC.isIEEE754,
+    s"fp_mul_alt_to_alt needs non-IEEE 754 operands and result, got $typeA x $typeB -> $typeC"
+  )
 
   val io = IO(new Bundle {
     val operand_a_i = Input(UInt(typeA.W))
@@ -91,8 +100,16 @@ class FpMulFpAltToAltBlackBox(typeA: FpType, typeB: FpType, typeC: FpType)
 
 }
 
-class FpMulFp(val typeA: FpType, val typeB: FpType, val typeC: FpType) extends Module with RequireAsyncReset {
-  require(typeA.isIEEE754 == typeB.isIEEE754, "IEEE 754 compliance of both operands must be the same")
+/** Combinational multiplier: out = in_a * in_b, rounded once into typeC. */
+class FpMulFp(val typeA: FpType, val typeB: FpType, val typeC: FpType) extends Module {
+  require(
+    typeA.isIEEE754 == typeB.isIEEE754,
+    s"FpMulFp: either both or neither operand must be IEEE 754, got $typeA x $typeB"
+  )
+  require(
+    !typeA.isIEEE754 || typeC.isIEEE754,
+    s"FpMulFp: IEEE 754 operands need an IEEE 754 result format, got $typeA x $typeB -> $typeC"
+  )
 
   val io = IO(new Bundle {
     val in_a = Input(UInt(typeA.W))
@@ -121,8 +138,5 @@ class FpMulFp(val typeA: FpType, val typeB: FpType, val typeC: FpType) extends M
 }
 
 object FpMulFpEmitter extends App {
-  emitVerilog(
-    new FpMulFp(typeA = FP8_ALT, typeB = FP8_ALT, typeC = BF16),
-    Array("--target-dir", "generated/fp_unit")
-  )
+  FpEmitter(new FpMulFp(typeA = FP8_ALT, typeB = FP8_ALT, typeC = BF16), "FpMulFp")
 }

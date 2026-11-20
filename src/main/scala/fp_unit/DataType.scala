@@ -1,5 +1,6 @@
 // Copyright 2025 KU Leuven.
-// KU Leuven confidential. Do not distribute.
+// Solderpad Hardware License, Version 0.51, see LICENSE for details.
+// SPDX-License-Identifier: SHL-0.51
 //
 // Author: Robin Geens <robin.geens@kuleuven.be>
 
@@ -19,9 +20,13 @@ abstract class FpType extends DataType {
   def width = expWidth + sigWidth + 1
   // Corresponding enum name in fpnew_pkg_snax::fp_format_e
   val fpnewFormatEnum: String
+
+  override def toString: String = getClass.getName.split('.').last.stripSuffix("$")
 }
 
-class IntType(val width: Int) extends DataType
+class IntType(val width: Int) extends DataType {
+  override def toString: String = s"Int$width"
+}
 
 object FP16 extends FpType {
   val expWidth        = 5
@@ -33,8 +38,8 @@ object FP32 extends FpType {
   val expWidth        = 8
   val sigWidth        = 23
   val fpnewFormatEnum = "fpnew_pkg_snax::FP32"
-
 }
+
 object BF16 extends FpType {
   val expWidth        = 8
   val sigWidth        = 7
@@ -47,7 +52,7 @@ object FP8 extends FpType {
   val fpnewFormatEnum = "fpnew_pkg_snax::FP8"
 }
 
-/** Doesn't follow IEEE 754 standard and uses all bins for value representation instead. */
+/** Non-IEEE 754 E5M2 variant without subnormals, infinities and NaNs; see the README. */
 object FP8_ALT extends FpType {
   val expWidth           = 5
   val sigWidth           = 2

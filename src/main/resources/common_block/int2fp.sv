@@ -6,8 +6,9 @@
 //         Xiaoling Yi <xiaoling.yi@kuleuven.be>
 //         Robin Geens <robin.geens@kuleuven.be>
 
+// Exact conversion of a signed integer of 1 to 11 bits to FP16. A 1-bit integer is bipolar: 1 is +1 and 0 is -1.
 module intN_to_fp16 #(
-    parameter INT_WIDTH = 4  // Set to 1, 2, 3, or 4
+    parameter INT_WIDTH = 4  // 1 to 11
 ) (
     input  wire signed [INT_WIDTH-1:0] intN_in,
     output logic       [         15:0] fp16_out
@@ -19,6 +20,12 @@ module intN_to_fp16 #(
   logic [9:0] mantissa;
 
   logic unsigned [$clog2(INT_WIDTH):0] leading_zero_count;
+
+  // pragma translate_off
+  initial begin
+    if (INT_WIDTH < 1 || INT_WIDTH > 11) $fatal(1, "intN_to_fp16: INT_WIDTH must be 1 to 11, got %0d", INT_WIDTH);
+  end
+  // pragma translate_on
 
   // Compute absolute value of int
   always_comb begin

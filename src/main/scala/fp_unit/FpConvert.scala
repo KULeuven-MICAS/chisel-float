@@ -19,7 +19,10 @@ class FpConvertBlackBox(typeA: FpType, typeC: FpType)
     )
     with HasBlackBoxResource {
 
-  require(typeA.isIEEE754 && typeC.isIEEE754, "only supports IEEE 754 compliant floating point conversions")
+  require(
+    typeA.isIEEE754 && typeC.isIEEE754,
+    s"fp_convert only supports IEEE 754 to IEEE 754 conversions, got $typeA -> $typeC"
+  )
 
   val io = IO(new Bundle {
     val operand_a_i = Input(UInt(typeA.W))
@@ -46,7 +49,7 @@ class FpConvertBlackBoxToAlt(typeA: FpType, typeC: FpType)
 
   require(
     typeA.isIEEE754 && !typeC.isIEEE754,
-    "only supports IEEE 754 to non-IEEE 754 compliant floating point conversions"
+    s"fp_convert_to_alt only supports IEEE 754 to non-IEEE 754 conversions, got $typeA -> $typeC"
   )
 
   val io = IO(new Bundle {
@@ -73,7 +76,7 @@ class FpConvertBlackBoxFromAlt(typeA: FpType, typeC: FpType)
 
   require(
     !typeA.isIEEE754 && typeC.isIEEE754,
-    "only supports IEEE 754 to non-IEEE 754 compliant floating point conversions"
+    s"fp_convert_from_alt only supports non-IEEE 754 to IEEE 754 conversions, got $typeA -> $typeC"
   )
 
   val io = IO(new Bundle {
@@ -89,7 +92,8 @@ class FpConvertBlackBoxFromAlt(typeA: FpType, typeC: FpType)
   addResource("fp_convert_from_alt.sv")
 }
 
-class FpConvert(val typeA: FpType, val typeC: FpType) extends Module with RequireAsyncReset {
+/** Combinational conversion from typeA to typeC, rounded to nearest even. */
+class FpConvert(val typeA: FpType, val typeC: FpType) extends Module {
 
   val io = IO(new Bundle {
     val in_a = Input(UInt(typeA.W))
@@ -111,14 +115,11 @@ class FpConvert(val typeA: FpType, val typeC: FpType) extends Module with Requir
     sv_module.io.operand_a_i := io.in_a
     io.out                   := sv_module.io.result_o
   } else {
-    throw new IllegalArgumentException(s"Unsupported conversion from ${typeA} to ${typeC}")
+    throw new IllegalArgumentException(s"Unsupported conversion from $typeA to $typeC")
   }
 
 }
 
 object FpConvertEmitter extends App {
-  emitVerilog(
-    new FpConvert(typeA = FP16, typeC = FP8),
-    Array("--target-dir", "generated/fp_unit")
-  )
+  FpEmitter(new FpConvert(typeA = FP16, typeC = FP8), "FpConvert")
 }
